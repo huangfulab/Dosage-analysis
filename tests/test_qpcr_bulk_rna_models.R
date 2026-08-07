@@ -103,7 +103,28 @@ stopifnot(
   all(fit$model_table$converged),
   all(is.finite(fit$model_table$aic)),
   abs(sum(fit$model_table$akaike_weight) - 1) < 1e-12,
+  # linear(2) + quadratic(3) + free LL.4(b,e) + fixed LL.4(c,d)
   NROW(fit$coefficients) == 9L,
+  fit$model_table$parameters[fit$model_table$model == "ll4"] == 3L,
+  sum(fit$coefficients$model == "ll4" & !fit$coefficients$fixed) == 2L,
+  any(fit$coefficients$term == "c:(Intercept)" & fit$coefficients$fixed),
+  any(fit$coefficients$term == "d:(Intercept)" & fit$coefficients$fixed),
+  isTRUE(all.equal(
+    fit$coefficients$estimate[fit$coefficients$term == "c:(Intercept)"],
+    min(fit$point_data$bulk_rna_percent)
+  )),
+  isTRUE(all.equal(
+    fit$coefficients$estimate[fit$coefficients$term == "d:(Intercept)"],
+    max(fit$point_data$bulk_rna_percent)
+  )),
+  isTRUE(all.equal(
+    unname(fit$settings$ll4_fixed_parameters[["c"]]),
+    min(fit$point_data$bulk_rna_percent)
+  )),
+  isTRUE(all.equal(
+    unname(fit$settings$ll4_fixed_parameters[["d"]]),
+    max(fit$point_data$bulk_rna_percent)
+  )),
   NROW(fit$linear_anova) == 2L,
   NROW(fit$quadratic_anova) == 3L,
   NROW(fit$linear_vs_quadratic_anova) == 2L,

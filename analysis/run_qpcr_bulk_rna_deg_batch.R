@@ -21,9 +21,9 @@ usage = function() {
     "  --expected-points      gRNA-level points per gene (default: 11)",
     "  --prediction-points    Points per fitted curve (default: 201)",
     "  --label-points         true or false (default: true)",
-    "\nOutputs include descriptive disagreement heatmap/matrix and model-support overview.",
     "  --overwrite            true or false; allow replacing non-empty output (default: false)",
     "  --help                 Show this message",
+    "Outputs include descriptive disagreement heatmap/matrix and model-support overview.",
     sep = "\n"
   ))
 }
@@ -311,8 +311,9 @@ write_analysis_provenance(
 )
 
 cat(sprintf(
-  "Completed %d gene(s); each PDF page contains 11 gRNA-level points. Results are in %s\n",
+  "Completed %d gene(s); each PDF page contains %d gRNA-level points. Results are in %s\n",
   length(batch_fit$genes),
+  expected_points,
   output_directory
 ))
 cat(paste(session_report, collapse = "\n"), "\n")

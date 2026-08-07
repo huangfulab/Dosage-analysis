@@ -7,8 +7,8 @@ three model fits, and one page in one multi-page PDF.
 
 ## Long-form input
 
-Supply one CSV row per sample and gene. For 44 samples and (G) genes, the
-input has (44 \times G) rows. The qPCR measurement is repeated for each gene
+Supply one CSV row per sample and gene. For 44 samples and *G* genes, the
+input has `44 × G` rows. The qPCR measurement is repeated for each gene
 because it is the common x-axis variable.
 
 | Column | Meaning |
@@ -35,7 +35,10 @@ each gRNA and fits exactly:
 
 1. Linear model.
 2. Quadratic model.
-3. Four-parameter log-logistic model: `drc::drm(y ~ x, fct=drc::LL.4())`.
+3. Log-logistic model with fixed response asymptotes:
+   `drc::drm(y ~ x, fct=drc::LL.4(fixed=c(NA, min(y), max(y), NA)))`.
+   Lower/upper asymptotes use the fitted bulk RNA-seq gRNA-mean range; only
+   slope and ED50 are estimated.
 
 All fitting and plotting use the original percentage scale. No log-scale
 transformation, spline, or correlation statistic is used. The outputs include
@@ -75,6 +78,7 @@ Omit `--deg-file` to analyse every gene in `--input`.
 
 | Output | Contents |
 | --- | --- |
+| `selected_long_input.csv` | Long-form input rows retained for the analysed gene set |
 | `gene_grna_level_means.csv` | The 11 fitted gRNA-level points plus replicate mean/SD/SE/min/max summaries for every gene |
 | `gene_grna_replicate_summaries.csv` | Explicit gene-labelled replicate summary table |
 | `gene_model_aic.csv` | Gene-labelled AIC, AICc, BIC, and rankings for all three models |
@@ -92,6 +96,8 @@ Omit `--deg-file` to analyse every gene in `--input`.
 | `qpcr_bulk_rna_model_overview.pdf` | Per-gene AIC weights/winners and RMSE; failures and ties are labelled |
 | `batch_model_objects.rds` | Complete fitted objects for all genes, diagnostics, and sensitivity results |
 | `run_manifest.tsv` | Input columns, gene/page count, package version, and Git state |
+| `session_info.txt` | Base R session info for the batch run |
+| `analysis_provenance.json` | Nested inputs, settings, source fingerprints, run summary, and generated-artifact inventory |
 
 The synthetic example is a software fixture only and must not be interpreted as
 study data. An AIC-preferred LL.4 curve is descriptive, not evidence of a

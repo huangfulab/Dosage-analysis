@@ -77,8 +77,21 @@ stopifnot(
   NROW(hill$model_table) == 1L,
   hill$model_table$model == "ll4",
   hill$model_table$converged,
+  hill$model_table$mean_parameters == 2L,
   is.character(hill$best_model),
-  any(grepl("e:", hill$coefficients$term, fixed = TRUE))
+  any(grepl("e:", hill$coefficients$term, fixed = TRUE)),
+  any(hill$coefficients$term == "c:(Intercept)" & hill$coefficients$fixed),
+  any(hill$coefficients$term == "d:(Intercept)" & hill$coefficients$fixed),
+  isTRUE(all.equal(
+    hill$coefficients$estimate[hill$coefficients$term == "c:(Intercept)"],
+    min(prepared$data$hill)
+  )),
+  isTRUE(all.equal(
+    hill$coefficients$estimate[hill$coefficients$term == "d:(Intercept)"],
+    max(prepared$data$hill)
+  )),
+  isTRUE(all.equal(unname(hill$settings$fixed_parameters[["c"]]), min(prepared$data$hill))),
+  isTRUE(all.equal(unname(hill$settings$fixed_parameters[["d"]]), max(prepared$data$hill)))
 )
 
 spline <- runmodelsaic_spline(

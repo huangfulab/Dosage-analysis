@@ -45,8 +45,7 @@ F-test. Predictions remain within the observed dose range.
 ## Four-parameter log-logistic candidates
 
 `runmodelsaic_drc()` retains the historical function name and fits the
-four-parameter log-logistic or Hill curve with `drc::drm()` and
-`drc::LL.4()`:
+log-logistic or Hill curve with `drc::drm()` and `drc::LL.4()`:
 
 \[
 f(x) = c + \frac{d-c}{1 + \exp\{b[\log(x)-\log(e)]\}},
@@ -56,10 +55,12 @@ where \(b\) is the slope or Hill exponent, \(c\) is the lower asymptote,
 \(d\) is the upper asymptote, and \(e\) is ED50. The sign of \(b\) determines
 whether the curve increases or decreases.
 
-All four parameters are estimated: slope, lower asymptote, upper asymptote,
-and ED50. Doses must be strictly positive. The LL.4 likelihood, AIC, BIC, and
-coefficient standard errors are obtained from the fitted `drc` object; AICc is
-calculated using its reported likelihood degrees of freedom.
+The lower and upper asymptotes are fixed to the observed response minimum and
+maximum of the fitted input rows (`drc::LL.4(fixed = c(NA, min(y), max(y), NA))`).
+Only the slope and ED50 are estimated. Doses must be strictly positive. The
+LL.4 likelihood, AIC, BIC, and free-coefficient standard errors are obtained
+from the fitted `drc` object; AICc is calculated using its reported likelihood
+degrees of freedom.
 
 ## Smoothing-spline candidates
 

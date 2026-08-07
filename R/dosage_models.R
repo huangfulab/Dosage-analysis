@@ -397,11 +397,12 @@ runmodelsaic_poly <- function(
   )
 }
 
-#' Fit a four-parameter log-logistic model with drc::LL.4().
+#' Fit a log-logistic model with drc::LL.4() and fixed response asymptotes.
 #'
 #' The model is y = c + (d - c) / (1 + exp(b * (log(x) - log(e)))),
-#' where b is the slope, c and d are the lower and upper asymptotes, and e is
-#' the ED50. All four parameters are estimated with `drc::drm()`.
+#' where b is the slope and e is the ED50. The lower asymptote c and upper
+#' asymptote d are fixed to the observed response minimum and maximum of the
+#' fitted input rows; only b and e are estimated with `drc::drm()`.
 runmodelsaic_drc <- function(
     data,
     dose_col,
@@ -426,6 +427,17 @@ runmodelsaic_drc <- function(
     require_positive_dose = TRUE,
     na_action = na_action
   )
+  response_min <- min(model_data$.response)
+  response_max <- max(model_data$.response)
+  if (!is.finite(response_min) || !is.finite(response_max)) {
+    stop("LL.4 asymptotes require finite response minimum and maximum values.", call. = FALSE)
+  }
+  if (!(response_min < response_max)) {
+    stop(
+      "LL.4 asymptotes require a strictly smaller response minimum than maximum so c and d can be fixed.",
+      call. = FALSE
+    )
+  }
   prediction_dose <- .prediction_grid(
     model_data$.dose,
     prediction_points,
@@ -482,7 +494,8 @@ runmodelsaic_drc <- function(
         drc::drm(
           .response ~ .dose,
           data = model_data,
-          fct = drc::LL.4(),
+          # Fix c/d to the fitted response range; estimate only slope b and ED50 e.
+          fct = drc::LL.4(fixed = c(NA, response_min, response_max, NA)),
           control = drc::drmc(noMessage = TRUE)
         ),
         warning = function(warning) {
@@ -507,14 +520,30 @@ runmodelsaic_drc <- function(
   captured_messages <- fit_capture$captured
 
   model_name <- "ll4"
+  # Free mean parameters are slope b and ED50 e; c and d are fixed asymptotes.
+  free_mean_parameters <- 2L
+  # Likelihood df counts free mean parameters plus residual variance.
+  expected_total_parameters <- free_mean_parameters + 1L
+  fixed_coefficient_rows <- data.frame(
+    method = "drc_ll4",
+    model = model_name,
+    term = c("c:(Intercept)", "d:(Intercept)"),
+    estimate = c(response_min, response_max),
+    standard_error = NA_real_,
+    statistic = NA_real_,
+    p_value = NA_real_,
+    fixed = TRUE,
+    stringsAsFactors = FALSE,
+    row.names = NULL
+  )
   if (inherits(fit, "error")) {
     model_table <- data.frame(
       method = "drc_ll4",
       model = model_name,
       converged = FALSE,
       n = NROW(model_data),
-      mean_parameters = 4L,
-      total_parameters = 5L,
+      mean_parameters = free_mean_parameters,
+      total_parameters = expected_total_parameters,
       degree = NA_integer_,
       effective_df = NA_real_,
       rss = NA_real_,
@@ -532,7 +561,7 @@ runmodelsaic_drc <- function(
       )), collapse = " | "),
       stringsAsFactors = FALSE
     )
-    coefficients <- data.frame()
+    coefficients <- fixed_coefficient_rows
     predictions <- data.frame(
       method = "drc_ll4",
       model = model_name,
@@ -547,7 +576,7 @@ runmodelsaic_drc <- function(
     fit_stats <- .gaussian_fit_statistics(
       model_data$.response,
       fitted_values,
-      mean_parameters = 4L
+      mean_parameters = free_mean_parameters
     )
     # Use drc's likelihood and parameter count for its nonlinear LL.4 fit;
     # failed fits remain explicit NA rows rather than aborting other candidates.
@@ -570,7 +599,7 @@ runmodelsaic_drc <- function(
       model = model_name,
       converged = TRUE,
       n = fit_stats$n,
-      mean_parameters = 4L,
+      mean_parameters = free_mean_parameters,
       total_parameters = fit_stats$parameters,
       degree = NA_integer_,
       effective_df = NA_real_,
@@ -588,17 +617,20 @@ runmodelsaic_drc <- function(
       )), collapse = " | "),
       stringsAsFactors = FALSE
     )
-    coefficients <- data.frame(
-      method = "drc_ll4",
-      model = model_name,
-      term = rownames(fit_summary),
-      estimate = fit_summary[, "Estimate"],
-      standard_error = fit_summary[, "Std. Error"],
-      statistic = fit_summary[, "t-value"],
-      p_value = fit_summary[, "p-value"],
-      fixed = FALSE,
-      stringsAsFactors = FALSE,
-      row.names = NULL
+    coefficients <- rbind(
+      data.frame(
+        method = "drc_ll4",
+        model = model_name,
+        term = rownames(fit_summary),
+        estimate = fit_summary[, "Estimate"],
+        standard_error = fit_summary[, "Std. Error"],
+        statistic = fit_summary[, "t-value"],
+        p_value = fit_summary[, "p-value"],
+        fixed = FALSE,
+        stringsAsFactors = FALSE,
+        row.names = NULL
+      ),
+      fixed_coefficient_rows
     )
     predictions <- data.frame(
       method = "drc_ll4",
@@ -629,6 +661,8 @@ runmodelsaic_drc <- function(
       best_model = best_model,
       settings = list(
         model_function = "drc::LL.4",
+        fixed_parameters = c(c = response_min, d = response_max),
+        free_parameters = c("b", "e"),
         prediction_points = prediction_points,
         prediction_range = range(prediction_dose),
         na_action = na_action,
@@ -1054,6 +1088,10 @@ plot_dosage_model_diagnostics <- function(
   if (length(models) < 1L) stop("No candidate models are available.", call. = FALSE)
 
   device_opened <- FALSE
+  # Capture caller parameters only when a caller device exists; otherwise
+  # par() would create an unintended default Rplots.pdf.
+  caller_has_device <- !is.null(grDevices::dev.list())
+  old_par <- if (caller_has_device) graphics::par(no.readonly = TRUE) else NULL
   if (!is.null(file)) {
     .assert_scalar_string(file, "file")
     directory <- dirname(file)
@@ -1068,9 +1106,10 @@ plot_dosage_model_diagnostics <- function(
     }
     device_opened <- TRUE
   }
-  old_par <- graphics::par(no.readonly = TRUE)
   on.exit({
-    graphics::par(old_par)
+    if (!is.null(old_par)) {
+      graphics::par(old_par)
+    }
     if (device_opened && grDevices::dev.cur() > 1L) grDevices::dev.off()
   }, add = TRUE)
   n_columns <- max(1L, min(3L, length(models)))

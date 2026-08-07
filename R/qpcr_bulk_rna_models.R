@@ -2,7 +2,8 @@
 #
 # The analysis unit is a gRNA species. Four sample-level observations are
 # averaged for each species before fitting the three prespecified models:
-# linear, quadratic, and drc::LL.4().
+# linear, quadratic, and drc::LL.4() with bulk RNA-seq asymptotes fixed to the
+# observed gRNA-mean minimum and maximum.
 
 .qpcr_bulk_assert_string = function(value, name) {
   if (!is.character(value) || length(value) != 1L || is.na(value) || !nzchar(value)) {
@@ -80,6 +81,7 @@
     standard_error = coefficient_table[, "Std. Error"],
     statistic = coefficient_table[, statistic_column],
     p_value = coefficient_table[, p_value_column],
+    fixed = FALSE,
     stringsAsFactors = F,
     row.names = NULL
   )
@@ -303,7 +305,11 @@ aggregate_grna_expression = function(
   )
 }
 
-#' Fit prespecified linear, quadratic, and LL.4 models to gRNA-level means.
+#' Fit prespecified linear, quadratic, and fixed-asymptote LL.4 models.
+#'
+#' The LL.4 lower and upper asymptotes are fixed to the observed bulk RNA-seq
+#' minimum and maximum on the fitted gRNA-level means. Only the slope and ED50
+#' remain free.
 fit_qpcr_bulk_rna_models = function(aggregate, prediction_points = 201L) {
   if (!inherits(aggregate, "grna_expression_aggregate")) {
     stop("`aggregate` must be returned by `aggregate_grna_expression()`.", call. = F)
@@ -319,6 +325,17 @@ fit_qpcr_bulk_rna_models = function(aggregate, prediction_points = 201L) {
   # Fit bulk RNA-seq response against qPCR predictor on the gRNA-level means,
   # matching the prespecified analysis unit rather than the 44 raw samples.
   point_data = aggregate$point_data
+  response_min = min(point_data$bulk_rna_percent)
+  response_max = max(point_data$bulk_rna_percent)
+  if (!is.finite(response_min) || !is.finite(response_max)) {
+    stop("LL.4 asymptotes require finite bulk RNA-seq minimum and maximum values.", call. = F)
+  }
+  if (!(response_min < response_max)) {
+    stop(
+      "LL.4 asymptotes require a strictly smaller bulk RNA-seq minimum than maximum so c and d can be fixed.",
+      call. = F
+    )
+  }
   prediction_data = data.frame(
     qpcr_percent = seq(
       min(point_data$qpcr_percent),
@@ -326,7 +343,8 @@ fit_qpcr_bulk_rna_models = function(aggregate, prediction_points = 201L) {
       length.out = prediction_points
     )
   )
-  # Candidate curves are linear, raw-scale quadratic, and a positive-x LL.4.
+  # Candidate curves are linear, raw-scale quadratic, and a positive-x LL.4
+  # with response asymptotes fixed to the observed bulk RNA-seq range.
   linear = stats::lm(bulk_rna_percent ~ qpcr_percent, data = point_data)
   quadratic = stats::lm(
     bulk_rna_percent ~ qpcr_percent + I(qpcr_percent^2),
@@ -382,7 +400,8 @@ fit_qpcr_bulk_rna_models = function(aggregate, prediction_points = 201L) {
       drc::drm(
         bulk_rna_percent ~ qpcr_percent,
         data = point_data,
-        fct = drc::LL.4(),
+        # Fix c/d to the fitted bulk RNA-seq range; estimate only b and e.
+        fct = drc::LL.4(fixed = c(NA, response_min, response_max, NA)),
         control = drc::drmc(noMessage = T)
       ),
       warning = function(warning) {
@@ -415,13 +434,27 @@ fit_qpcr_bulk_rna_models = function(aggregate, prediction_points = 201L) {
     )
   )
 
+  # Free mean parameters are slope b and ED50 e; c and d are fixed asymptotes.
+  free_mean_parameters = 2L
+  expected_total_parameters = free_mean_parameters + 1L
+  fixed_ll4_coefficients = data.frame(
+    model = "ll4",
+    method = "drc::LL.4",
+    term = c("c:(Intercept)", "d:(Intercept)"),
+    estimate = c(response_min, response_max),
+    standard_error = NA_real_,
+    statistic = NA_real_,
+    p_value = NA_real_,
+    fixed = TRUE,
+    stringsAsFactors = F
+  )
   if (inherits(ll4, "error")) {
     ll4_metrics = data.frame(
       model = "ll4",
       method = "drc::LL.4",
       converged = F,
       n = NROW(point_data),
-      parameters = 5L,
+      parameters = expected_total_parameters,
       rss = NA_real_,
       rmse = NA_real_,
       r_squared = NA_real_,
@@ -432,7 +465,7 @@ fit_qpcr_bulk_rna_models = function(aggregate, prediction_points = 201L) {
       convergence_message = conditionMessage(ll4),
       stringsAsFactors = F
     )
-    ll4_coefficients = data.frame()
+    ll4_coefficients = fixed_ll4_coefficients
     ll4_predictions = data.frame(
       model = "ll4",
       qpcr_percent = prediction_data$qpcr_percent,
@@ -443,7 +476,10 @@ fit_qpcr_bulk_rna_models = function(aggregate, prediction_points = 201L) {
   } else {
     ll4_metrics = .qpcr_bulk_fit_metrics(ll4, "ll4", "drc::LL.4")
     ll4_metrics$convergence_message = paste(unique(ll4_warnings), collapse = " | ")
-    ll4_coefficients = .qpcr_bulk_coefficients(ll4, "ll4", "drc::LL.4")
+    ll4_coefficients = rbind(
+      .qpcr_bulk_coefficients(ll4, "ll4", "drc::LL.4"),
+      fixed_ll4_coefficients
+    )
     ll4_predictions = data.frame(
       model = "ll4",
       qpcr_percent = prediction_data$qpcr_percent,
@@ -489,6 +525,8 @@ fit_qpcr_bulk_rna_models = function(aggregate, prediction_points = 201L) {
       ),
       settings = list(
         model_set = c("linear", "quadratic", "drc::LL.4"),
+        ll4_fixed_parameters = c(c = response_min, d = response_max),
+        ll4_free_parameters = c("b", "e"),
         prediction_points = prediction_points,
         drc_version = as.character(utils::packageVersion("drc"))
       )

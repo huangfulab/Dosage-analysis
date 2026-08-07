@@ -11,7 +11,7 @@ Use this workflow for raw normalized expression percentages where the control me
 
 1. For batch DEG analysis, keep one long-form row per sample and gene with a sample identifier, gRNA identifier, normalized qPCR value, gene, and normalized bulk RNA-seq value.
 2. Require exactly four samples per gRNA and 11 gRNA-level points for every gene unless the study design explicitly differs. Use `fit_qpcr_bulk_rna_deg_batch()` to enforce the grouping before fitting.
-3. Fit exactly three model families with `fit_qpcr_bulk_rna_models()`: linear `lm`, quadratic `lm`, and `drc::drm(..., fct = drc::LL.4())`.
+3. Fit exactly three model families with `fit_qpcr_bulk_rna_models()`: linear `lm`, quadratic `lm`, and `drc::drm(..., fct = drc::LL.4(fixed = c(NA, min(y), max(y), NA)))` with bulk RNA-seq asymptotes fixed to the fitted gRNA-mean range.
 4. Preserve the original percentage scale. Do not add log scaling, Spearman correlation, or spline models unless a separate analysis explicitly requires them.
 5. Write the AIC/AICc/BIC table for all three models. Write individual ANOVA tables for the linear and quadratic fits, plus the nested linear-versus-quadratic ANOVA. Do not describe this nested test as a comparison involving LL.4.
 6. Write one multi-page PDF with one gene per page; each page must show its 11 gRNA-level means, 100% reference lines, and all three fitted curves.
@@ -35,4 +35,4 @@ Inspect `gene_grna_level_means.csv` before interpreting any model: it is the 11-
 
 ## Validate
 
-Run `make test` after changing shared model code. For a complete batch smoke test, run `make qpcr-bulk-deg-example`; it creates deterministic long-form data, validates 11 points per gene, and writes a three-page PDF. Treat LL.4 preference by AIC cautiously because 11 points offer limited support for a flexible four-parameter curve.
+Run `make test` after changing shared model code. For a complete batch smoke test, run `make qpcr-bulk-deg-example`; it creates deterministic long-form data, validates 11 points per gene, and writes a three-page PDF. Treat LL.4 preference by AIC cautiously: asymptotes are fixed, but 11 points still offer limited support for the remaining nonlinear parameters.
