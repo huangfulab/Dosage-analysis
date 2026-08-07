@@ -2,8 +2,9 @@
 .DS_Store
 **/.DS_Store
 
-# Local coding-agent runtime artifacts (project skills under .agents/ remain trackable)
+# Local coding-agent runtime artifacts and configuration (not for publication)
 /.pi-subagents/
+/.agents/
 
 # Generated synthetic fixtures and private/local study inputs.
 # Keep only the schema and data-handling documentation by default; public data
