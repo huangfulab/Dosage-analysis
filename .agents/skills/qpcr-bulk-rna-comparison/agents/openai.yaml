@@ -1,4 +1,0 @@
-interface:
-  display_name: "qPCR Bulk RNA Comparison"
-  short_description: "Fit qPCR versus bulk RNA response models"
-  default_prompt: "Use $qpcr-bulk-rna-comparison to build and validate a gRNA-level qPCR versus bulk RNA-seq model comparison."
