@@ -1,3 +1,24 @@
+# macOS metadata
+.DS_Store
+**/.DS_Store
+
+# Local coding-agent runtime artifacts (project skills under .agents/ remain trackable)
+/.pi-subagents/
+
+# Generated synthetic fixtures and private/local study inputs.
+# Keep only the schema and data-handling documentation by default; public data
+# must be explicitly allow-listed before it is committed.
+/data/*
+!/data/README.md
+
+# Generated analysis outputs. Recreate them with the Makefile targets.
+/results/
+
+# Editor and temporary files
+*~
+*.swp
+*.swo
+
 # History files
 .Rhistory
 .Rapp.history
