@@ -17,6 +17,36 @@ class MatrixTests(unittest.TestCase):
         self.assertEqual([row["r"] for row in rows], [f"4.{i}" for i in range(7)])
         self.assertEqual([row["bioconductor"] for row in rows], ["3.11", "3.13", "3.15", "3.17", "3.19", "3.21", "3.23"])
 
+    def test_selected_series_keeps_its_exact_baseline(self):
+        complete = r_matrix.matrix("4.6.1")["include"]
+        for row in complete:
+            self.assertEqual(r_matrix.matrix("4.6.1", r_series=row["r"]), {"include": [row]})
+        self.assertEqual(r_matrix.matrix("4.6.1", r_series="all")["include"], complete)
+
+    def test_invalid_selection_is_rejected(self):
+        for selection in ("", "4.7", "4.6.1", "4.5,4.6", "ALL", "$(false)"):
+            with self.assertRaises(ValueError):
+                r_matrix.matrix("4.6.1", r_series=selection)
+        # Targeted reruns must still detect missing baselines for a new R release.
+        with self.assertRaises(ValueError):
+            r_matrix.matrix("4.7.0", r_series="4.6")
+
+    def test_manual_dispatch_choices_match_supported_series(self):
+        workflow = (r_matrix.ROOT.parent / ".github/workflows/r-compatibility.yaml").read_text()
+        dispatch = re.search(r"^  workflow_dispatch:\n(.*?)(?=^  [a-z_]+:)", workflow, re.M | re.S)
+        self.assertIsNotNone(dispatch)
+        self.assertIn("default: all", dispatch[1])
+        choices = re.findall(r'^          - "?([^"\n]+)"?$', dispatch[1], re.M)
+        self.assertEqual(choices, ["all", *[r["r"] for r in r_matrix.matrix("4.6.1")["include"]]])
+        self.assertIn("CI_R_SERIES_SELECTION: ${{ inputs.r_series || 'all' }}", workflow)
+        self.assertIn('python3 ci/r_matrix.py --r-series "$CI_R_SERIES_SELECTION"', workflow)
+
+    def test_cli_can_select_only_r_46(self):
+        result = subprocess.run([sys.executable, str(r_matrix.ROOT / "r_matrix.py"),
+            "--release-version", "4.6.1", "--r-series", "4.6"],
+            capture_output=True, text=True, check=True)
+        self.assertEqual([row["r"] for row in json.loads(result.stdout)["include"]], ["4.6"])
+
     def test_new_release_must_not_be_silently_omitted(self):
         for release in ("4.7.0", "5.0.0", "4.6.1-devel"):
             with self.assertRaises(ValueError):

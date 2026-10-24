@@ -4,6 +4,21 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      r_series:
+        description: "R series to test (all for complete coverage)"
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - "4.0"
+          - "4.1"
+          - "4.2"
+          - "4.3"
+          - "4.4"
+          - "4.5"
+          - "4.6"
   schedule:
     - cron: '23 5 * * 1'
 
@@ -25,9 +40,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test CI matrix logic
         run: python3 -m unittest discover -s ci -p 'test_*.py' -v
-      - name: Discover the stable R release and emit all supported series
+      - name: Discover stable R, validate all baselines and emit selected series
         id: matrix
-        run: echo "versions=$(python3 ci/r_matrix.py)" >> "$GITHUB_OUTPUT"
+        env:
+          CI_R_SERIES_SELECTION: ${{ inputs.r_series || 'all' }}
+        run: |
+          versions=$(python3 ci/r_matrix.py --r-series "$CI_R_SERIES_SELECTION")
+          echo "versions=$versions" >> "$GITHUB_OUTPUT"
 
   minimum:
     name: R ${{ matrix.r }} / assumed minimum dependencies

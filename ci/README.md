@@ -3,8 +3,24 @@
 `.github/workflows/r-compatibility.yaml` checks **every R 4.x minor release
 series from 4.0 through 4.6**, using the latest patch release in each series on
 Ubuntu 22.04. These are seven separate jobs, not a single R-major-version job.
-The workflow runs on pushes, pull requests, manual dispatch, and a weekly
-schedule. It does not publish releases or analysis results.
+Automatic pushes, pull requests, and weekly runs use the complete matrix.
+Manual dispatch defaults to all series and can select a single series for a
+targeted rerun. The workflow does not publish releases or analysis results.
+
+## Targeted manual reruns
+
+In GitHub Actions, choose **Run workflow** and set `r_series` to `4.6` to run
+only that R environment, or leave `all` selected for complete coverage. The
+same operation is available through the CLI:
+
+```bash
+gh workflow run r-compatibility.yaml --ref main -f r_series=4.6
+```
+
+A targeted run still validates every declared baseline and checks for newly
+released R series before filtering the execution matrix. It runs the metadata
+validation job plus one R job, including all the ordinary tests for that R
+series. A single-series pass is not a fresh seven-series compatibility pass.
 
 ## Assumed minimum supported dependencies
 
@@ -57,6 +73,11 @@ For R 4.0 only, `locfit` is explicitly pinned to **1.5-9.4** before installing
 DESeq2: the shared 2022 snapshot carries locfit 1.5-9.6, which requires R >= 4.1.
 This compatibility pin is verified alongside the nine direct floors and recorded
 in the package inventory. Other R series use the snapshot's locfit.
+For R 4.6 only, `cowplot` is pinned to **1.1.3** before installing the direct
+packages. The 2026 snapshot's cowplot 1.2.0 (via drc/car/doBy) requires ggplot2
+>= 3.5.2, which conflicts with the declared direct floor 3.4.3. Cowplot 1.1.3
+requires ggplot2 >= 3.4.0 and preserves that floor. This transitive pin is also
+verified exactly and recorded; dependency-constraint checking is not bypassed.
 Exact CRAN sources are looked up in both Archive and current source locations;
 current releases such as matrixStats 1.5.0 may not yet have an Archive entry.
 The Ubuntu jobs install ImageMagick C++ headers for the magick dependency in
@@ -106,7 +127,8 @@ study data or existing local result files are required or uploaded.
 [`r-versions.csv`](r-versions.csv) and `minimum-packages.csv` are the source of
 truth. The matrix generator queries the R-hub stable-release API and **fails**
 if a newly released R series has no declared baseline, instead of silently
-omitting it. Extend both files, their tests, and this table for a new series.
+omitting it. Extend both files, their tests, this table, and the workflow's
+manual-dispatch choices for a new series.
 The release lookup also fails on network errors; such a failure is not a green
 compatibility result. Weekly/manual workflows become available according to
 GitHub's default-branch workflow rules after the configuration is merged.

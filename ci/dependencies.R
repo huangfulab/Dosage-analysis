@@ -14,6 +14,11 @@ minimum_plan = function(r_series, root="ci") {
   # therefore needs the last R-4.0-compatible source, not a newer direct floor.
   compatibility = data.frame(package="locfit", version="1.5-9.4", source="CRAN", stringsAsFactors=F)
   if (r_series != "4.0") compatibility = compatibility[FALSE, , drop=F]
+  # The R 4.6 snapshot's cowplot 1.2.0 (via drc/car/doBy) requires
+  # ggplot2 >= 3.5.2. Keep our direct floor 3.4.3 and pin a compatible cowplot.
+  if (r_series == "4.6") {
+    compatibility = data.frame(package="cowplot", version="1.1.3", source="CRAN", stringsAsFactors=F)
+  }
   list(r=r_series, bioconductor=row$bioconductor, cran_snapshot=row$cran_snapshot,
     packages=plan, compatibility_packages=compatibility)
 }
