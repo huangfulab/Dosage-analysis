@@ -3,7 +3,8 @@
 This workflow compares normalized qPCR expression with normalized bulk RNA-seq
 expression for every selected differentially expressed gene (DEG). It is a
 batch analysis: each gene receives its own 44-sample to 11-point aggregation,
-three model fits, and one page in one multi-page PDF.
+three model fits, and one page in one multi-page PDF. Use it for raw
+normalized expression percentages where the control mean is 100%.
 
 ## Long-form input
 
@@ -20,10 +21,12 @@ because it is the common x-axis variable.
 | `bulk_rna_percent` | That gene's expression normalized so controls average 100% |
 
 The runner checks **each gene independently**. It requires exactly four
-complete samples per gRNA and exactly eleven resulting gRNA-level points. A
-gene that fails either condition stops the run rather than being silently
-omitted. It also requires every selected gene to contain the same sample IDs,
-gRNA assignments, and qPCR values.
+complete samples per gRNA and exactly eleven resulting gRNA-level points
+unless the study design explicitly differs. A gene that fails either
+condition stops the run rather than being silently omitted. It also requires
+every selected gene to contain the same sample IDs, gRNA assignments, and
+qPCR values. `fit_qpcr_bulk_rna_deg_batch()` enforces this grouping before
+any fitting.
 
 Optionally provide `--deg-file` with a CSV gene list. By default, every gene
 represented in the long-form input is analysed.
@@ -31,7 +34,8 @@ represented in the long-form input is analysed.
 ## Prespecified analysis per gene
 
 For every gene, the runner averages qPCR and bulk RNA-seq percentages within
-each gRNA and fits exactly:
+each gRNA and fits exactly three model families with
+`fit_qpcr_bulk_rna_models()`:
 
 1. Linear model.
 2. Quadratic model.
@@ -51,7 +55,30 @@ do not claim inferential independence among gRNAs.
 
 ## Run
 
-From the repository root:
+### Single pre-aggregated target gene
+
+For one pre-aggregated target gene, use
+`analysis/run_qpcr_bulk_rna_comparison.R`. Its synthetic fixture runs with
+`make qpcr-bulk-example`; the study-data invocation is:
+
+```bash
+Rscript analysis/run_qpcr_bulk_rna_comparison.R \
+  --input path/to/input.csv \
+  --grna-col grna \
+  --qpcr-col qpcr_percent \
+  --bulk-rna-col bulk_rna_percent \
+  --output-dir results/qpcr_bulk_rna_example
+```
+
+It aggregates gRNA-level means (default 4 replicates per gRNA, 11 gRNA
+points; override with `--expected-replicates` and `--expected-points`), fits
+the same three model families, and writes AIC/ANOVA/coefficient tables, a
+raw-percent scatterplot PDF (`qpcr_bulk_rna_scatterplot.pdf`), and a
+diagnostics PDF.
+
+### Batch DEG analysis
+
+From the repository root, the deterministic synthetic fixture runs with:
 
 ```bash
 make qpcr-bulk-deg-example
@@ -90,7 +117,7 @@ Omit `--deg-file` to analyse every gene in `--input`.
 | `batch_concordance_difference_matrix.csv` | Exact gene-by-gRNA matrix of bulk RNA-seq minus qPCR percentage points |
 | `batch_concordance_difference_long.csv` | Long-form version of the same descriptive disagreement values |
 | `gene_*anova.csv` | Gene-labelled linear, quadratic, and nested ANOVA tables |
-| `qpcr_bulk_rna_all_degs.pdf` | One page per gene: points, descriptive SE bars, reference lines, and curves only for converged models; LL.4 failures are shown in tables/diagnostics, not as fabricated curves |
+| `qpcr_bulk_rna_all_degs.pdf` | One page per gene: the 11 gRNA-level means, descriptive SE bars, 100% reference lines, and curves only for converged models; LL.4 failures are shown in tables/diagnostics, not as fabricated curves |
 | `qpcr_bulk_rna_all_degs_diagnostics.pdf` | Separate multi-page observed-vs-fitted and residual-vs-fitted diagnostic panels |
 | `qpcr_bulk_rna_batch_concordance_heatmap.pdf` | Symmetric diverging heatmap of descriptive percentage-point disagreement |
 | `qpcr_bulk_rna_model_overview.pdf` | Per-gene AIC weights/winners and RMSE; failures and ties are labelled |
@@ -99,8 +126,13 @@ Omit `--deg-file` to analyse every gene in `--input`.
 | `session_info.txt` | Base R session info for the batch run |
 | `analysis_provenance.json` | Nested inputs, settings, source fingerprints, run summary, and generated-artifact inventory |
 
+Inspect `gene_grna_level_means.csv` before interpreting any model: it is the
+11-point dataset actually fitted for every gene.
+
 The synthetic example is a software fixture only and must not be interpreted as
-study data. An AIC-preferred LL.4 curve is descriptive, not evidence of a
+study data. Treat an AIC preference for LL.4 cautiously: asymptotes are fixed,
+but 11 points still offer only limited support for the remaining nonlinear
+parameters. An AIC-preferred LL.4 curve is descriptive, not evidence of a
 biological saturation mechanism or causal qPCR-to-RNA-seq relationship. The
 concordance heatmap is specifically bulk RNA-seq minus qPCR in percentage
 points: it describes disagreement and is not mechanistic truth. Model overview
@@ -109,3 +141,10 @@ Diagnostic values describe the fitted observations and are not a substitute for
 independent validation. Leave-one-gRNA-out results probe sensitivity to the
 specified gRNA points; they are not external validation, and failures are
 reported rather than omitted.
+
+## Validate
+
+Run `make test` after changing shared model code
+(`R/qpcr_bulk_rna_models.R` or `R/cli_helpers.R`). For a complete batch smoke
+test, run `make qpcr-bulk-deg-example`; it creates deterministic long-form
+data, validates 11 points per gene, and writes a three-page PDF.
