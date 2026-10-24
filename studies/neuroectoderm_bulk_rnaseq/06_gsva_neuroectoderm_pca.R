@@ -21,6 +21,44 @@ script_dir = function() {
 }
 stop_with = function(...) stop(sprintf(...), call.=F)
 
+# API-only adapter: identical scoring options for pre-1.50 matrix/list calls
+# and parameter objects. Do not catch analysis errors and retry another method.
+call_gsva_compat = function(expr_data, gene_sets, method, gsva_function,
+    param_function=NULL, verbose=T,
+    BPPARAM=BiocParallel::SerialParam(progressbar=verbose)) {
+  method = match.arg(method, c("ssgsea", "gsva"))
+  if (is.null(param_function)) {
+    arguments = list(
+      expr=expr_data, gset.idx.list=gene_sets, method=method,
+      min.sz=1, max.sz=Inf, parallel.sz=1L, verbose=verbose, BPPARAM=BPPARAM
+    )
+    if (identical(method, "ssgsea")) {
+      arguments$tau = 0.25
+      arguments$ssgsea.norm = T
+    } else {
+      arguments$kcdf = "Gaussian"
+      arguments$tau = 1
+      arguments$mx.diff = T
+      arguments$abs.ranking = F
+    }
+    return(do.call(gsva_function, arguments))
+  }
+  arguments = list(exprData=expr_data, geneSets=gene_sets, minSize=1, maxSize=Inf)
+  if (identical(method, "ssgsea")) {
+    arguments$alpha = 0.25
+    arguments$normalize = T
+  } else {
+    arguments$kcdf = "Gaussian"
+    arguments$tau = 1
+    arguments$maxDiff = T
+    arguments$absRanking = F
+  }
+  # GSVA 1.50 constructors lack verbose; newer constructors accept it.
+  if ("verbose" %in% names(formals(param_function))) arguments$verbose = verbose
+  parameter = do.call(param_function, arguments)
+  gsva_function(parameter, verbose=verbose, BPPARAM=BPPARAM)
+}
+
 args = commandArgs(trailingOnly=T)
 project_dir = script_dir()
 output_dir = if (length(args) >= 1L) args[[1L]] else file.path(project_dir, "outputs")
@@ -182,32 +220,23 @@ if (
   stop_with("Reconstructed PCA coordinates do not match pca-coordinates.csv")
 }
 
-message("Running ssGSEA")
-ssgsea_param = ssgseaParam(
-  exprData=vst_matrix,
-  geneSets=gene_sets,
-  minSize=1,
-  maxSize=Inf,
-  alpha=0.25,
-  normalize=T,
-  verbose=T
+gsva_exports = getNamespaceExports("GSVA")
+ssgsea_constructor = if ("ssgseaParam" %in% gsva_exports) getExportedValue("GSVA", "ssgseaParam") else NULL
+gsva_constructor = if ("gsvaParam" %in% gsva_exports) getExportedValue("GSVA", "gsvaParam") else NULL
+
+message("Running ssGSEA (", if (is.null(ssgsea_constructor)) "legacy" else "parameter-object", " API)")
+ssgsea_scores = call_gsva_compat(
+  vst_matrix, gene_sets, "ssgsea", GSVA::gsva, ssgsea_constructor
 )
-ssgsea_scores = gsva(ssgsea_param)
 if (!is.matrix(ssgsea_scores)) ssgsea_scores = assay(ssgsea_scores)
 if (!"NEUROECTODERM_NSC" %in% rownames(ssgsea_scores)) {
   stop_with("ssGSEA result is missing the NEUROECTODERM_NSC gene set")
 }
 
-message("Running GSVA")
-gsva_param = gsvaParam(
-  exprData=vst_matrix,
-  geneSets=gene_sets,
-  minSize=1,
-  maxSize=Inf,
-  kcdf="Gaussian",
-  verbose=T
+message("Running GSVA (", if (is.null(gsva_constructor)) "legacy" else "parameter-object", " API)")
+gsva_scores = call_gsva_compat(
+  vst_matrix, gene_sets, "gsva", GSVA::gsva, gsva_constructor
 )
-gsva_scores = gsva(gsva_param)
 if (!is.matrix(gsva_scores)) gsva_scores = assay(gsva_scores)
 if (!"NEUROECTODERM_NSC" %in% rownames(gsva_scores)) {
   stop_with("GSVA result is missing the NEUROECTODERM_NSC gene set")
@@ -414,7 +443,10 @@ summary_lines = c(
   sprintf("Gene-set symbols: %d", length(ne_gene_symbols)),
   sprintf("Mapped symbols: %d", n_mapped),
   sprintf("Unmapped symbols: %s", if (length(unmapped_symbols) == 0L) "none" else paste(unmapped_symbols, collapse=", ")),
-  "Algorithms: ssgseaParam(normalize=TRUE, alpha=0.25); gsvaParam(kcdf=Gaussian)",
+  "Algorithms: ssGSEA(normalize=TRUE, alpha/tau=0.25); GSVA(kcdf=Gaussian, tau=1, maxDiff=TRUE, absRanking=FALSE)",
+  sprintf("GSVA version: %s", utils::packageVersion("GSVA")),
+  sprintf("ssGSEA API: %s", if (is.null(ssgsea_constructor)) "legacy matrix/list" else "parameter object"),
+  sprintf("GSVA API: %s", if (is.null(gsva_constructor)) "legacy matrix/list" else "parameter object"),
   sprintf("ssGSEA score range: %.4f to %.4f", min(sample_scores$ssgsea), max(sample_scores$ssgsea)),
   sprintf("GSVA score range: %.4f to %.4f", min(sample_scores$gsva), max(sample_scores$gsva)),
   "ssGSEA fill: raw score, grey50-yellow-red, limits min(score) to max(score)",

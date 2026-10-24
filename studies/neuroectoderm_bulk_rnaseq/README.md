@@ -83,7 +83,7 @@ Beyond Bioconductor **DESeq2**, the pooled pipeline also needs:
 - **GSVA** (neuroectoderm ssGSEA / GSVA scores on the existing sample PCA)
 - **drc** (fixed-asymptote LL.4 fitting in script 05)
 
-Install required packages explicitly in your chosen environment; these scripts do not install them. Script 06 requires the modern GSVA parameter-object API (`ssgseaParam`, `gsvaParam`), not the older `gsva(expression, geneSets)` API.
+Install required packages explicitly in your chosen environment; these scripts do not install them. Script 06 automatically selects the parameter-object API (`ssgseaParam`, `gsvaParam`) when exported, otherwise the legacy `gsva(expression, geneSets, method=...)` API. Early parameter constructors without `verbose` are supported. Scoring errors propagate normally; they do not trigger a silent fallback to a different algorithm. R-specific assumed minimum versions and CI coverage are documented in [`ci/README.md`](../../ci/README.md).
 
 The synthetic integration test was run with R 4.6.1, DESeq2 1.52.0, openxlsx 4.2.9, devtools 2.5.2, ggplot2 4.0.3, ggrepel 0.9.8, pheatmap 1.0.13, matrixStats 1.5.0, GSVA 2.6.6, and drc 3.0.1. This is an observed test environment, not a lockfile or a claim that other versions reproduce the study results. The optional `glmGamPoi` strategy was not runtime-tested because that package was unavailable.
 
@@ -323,6 +323,8 @@ Two algorithms from Bioconductor **GSVA**:
 
 - `ssgseaParam(..., normalize=TRUE, alpha=0.25)` — Barbie et al. 2009 ssGSEA
 - `gsvaParam(..., kcdf="Gaussian")` — Hänzelmann et al. 2013 GSVA, Gaussian kernel for VST values
+
+On legacy GSVA these map to `method="ssgsea", tau=0.25, ssgsea.norm=TRUE` and `method="gsva", kcdf="Gaussian", tau=1, mx.diff=TRUE, abs.ranking=FALSE`, respectively; both retain gene-set sizes 1 to Inf and serial execution. The run summary records the selected API and installed GSVA version. The adapter preserves analysis settings, not a guarantee of identical numerical output across upstream GSVA releases.
 
 The expression input is the **full** fitted VST matrix (all retained genes), not the gene-set rows alone. PCA x/y are the stored PC1/PC2 coordinates; they are not recomputed for plotting. GSVA fill is the signed score, blue–white–red, midpoint 0, symmetric limits at `max(|score|)`. ssGSEA Barbie normalization does **not** guarantee nonnegative scores; that panel uses grey50–yellow–red over the observed `min(score)` to `max(score)`, retaining any negative values. Constant-score plotting limits are padded without changing the stored scores.
 

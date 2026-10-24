@@ -61,7 +61,10 @@ The current development environment was inspected with R 4.6.1 and `drc` 3.0.1.
 These are an environment reference, **not** a tested minimum-version range or a
 locked dependency specification. No `renv.lock` or independently verified
 clean-environment setup is supplied yet. Installing the latest CRAN packages
-alone does not guarantee reproduction of an earlier run.
+alone does not guarantee reproduction of an earlier run. The compatibility CI
+uses explicit assumed minimum direct-package versions; see
+[`ci/README.md`](ci/README.md) for the R 4.0–4.6 matrix, dependency floors,
+validation status, and the distinction from a complete environment lockfile.
 
 ## Quick start without replacing existing data or results
 
@@ -225,6 +228,12 @@ make test
 ```
 
 The tests cover the dosage, single-gene qPCR, and batch qPCR workflows.
+The GitHub Actions compatibility workflow additionally runs GSVA compatibility
+and the synthetic neuroectoderm study integration test on every declared R
+series, using its assumed minimum direct dependencies. A CI definition is not
+proof of compatibility until those jobs pass; details are in
+[`ci/README.md`](ci/README.md).
+
 Passing them checks software behaviour; it does not establish manuscript
 reproducibility or replace an independent clean-clone analysis with study data.
 
