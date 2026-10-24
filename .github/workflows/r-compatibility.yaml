@@ -67,8 +67,11 @@ jobs:
             build-essential gfortran cmake pkg-config pandoc poppler-utils \
             libcurl4-openssl-dev libssl-dev libxml2-dev libgit2-dev \
             libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev \
-            libpng-dev libtiff5-dev libjpeg-dev libhdf5-dev libglpk-dev \
-            libgmp3-dev libmpfr-dev libudunits2-dev libnlopt-dev libicu-dev libmagick++-dev
+            libpng-dev libtiff5-dev libjpeg-dev libwebp-dev libuv1-dev \
+            libhdf5-dev libglpk-dev libgmp3-dev libmpfr-dev libudunits2-dev \
+            libnlopt-dev libicu-dev libmagick++-dev
+          # Fail early if fs/ragg cannot discover their native build dependencies.
+          pkg-config --modversion libuv freetype2 libpng libtiff-4 libjpeg libwebp libwebpmux
       - name: Isolate the R library and validate CI metadata
         run: |
           mkdir -p "$CI_R_LIBRARY" "$CI_LOG_DIR"

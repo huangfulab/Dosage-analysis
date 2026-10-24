@@ -33,6 +33,26 @@ class MatrixTests(unittest.TestCase):
         self.assertIn('echo "CI_LOG_DIR=$RUNNER_TEMP/dosage-ci-logs"', workflow)
         self.assertLess(workflow.index("Initialize isolated runner paths"), workflow.index("r-lib/actions/setup-r"))
 
+    def test_native_dependencies_are_checked_before_r_installation(self):
+        workflow = (r_matrix.ROOT.parent / ".github/workflows/r-compatibility.yaml").read_text()
+        step = re.search(
+            r"^      - name: Install system libraries for the hard dependency closure\n"
+            r"(.*?)(?=^      - )", workflow, re.M | re.S
+        )
+        self.assertIsNotNone(step)
+        apt = re.search(
+            r"sudo apt-get install -y --no-install-recommends[ \t]+([^\n]+)",
+            step[1].replace("\\\n", " ")
+        )
+        self.assertIsNotNone(apt)
+        # Recent fs/ragg transitive releases need system libuv and WebP headers.
+        for package in ("libuv1-dev", "libwebp-dev"):
+            self.assertIn(package, apt[1].split())
+        check = "pkg-config --modversion libuv freetype2 libpng libtiff-4 libjpeg libwebp libwebpmux"
+        self.assertIn(check, step[1])
+        self.assertLess(step[1].index("sudo apt-get install"), step[1].index(check))
+        self.assertLess(workflow.index(check), workflow.index("Rscript ci/dependencies.R --install"))
+
     def test_cli_json_is_valid(self):
         result = subprocess.run([sys.executable, str(r_matrix.ROOT / "r_matrix.py"),
             "--release-version", "4.6.1"], capture_output=True, text=True, check=True)
