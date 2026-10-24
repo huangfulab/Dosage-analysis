@@ -1,0 +1,52 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Agent / local tooling (not analysis code)
+.agents/
+
+# All pipeline outputs and derived artifacts
+outputs/
+**/outputs/
+
+# Study-local input placeholders: keep all supplied data out of Git.
+/inputs/
+
+# Data inputs and tables (never commit, except the root sample crosswalk)
+*.csv
+!/sample_metadata_draft.csv
+*.tsv
+*.txt
+*.xlsx
+*.xls
+*.rds
+*.RData
+*.rda
+*.rdata
+
+# Figures and binary results
+*.png
+*.pdf
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.svg
+*.html
+
+# Archives / logs
+*.zip
+*.gz
+*.bz2
+*.xz
+*.log
+
+# R session junk
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
