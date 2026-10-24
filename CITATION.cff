@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+type: software
+message: >-
+  If you use this software, please cite the version used
+  in your analysis using its version-specific DOI.
+title: "Dosage-analysis"
+authors:
+  - family-names: "Cho"
+    given-names: "Hyein S."
+version: "1.0.1"
+date-released: "2026-10-24"
+doi: "10.5281/zenodo.23622499"
+url: "https://github.com/huangfulab/Dosage-analysis"
+repository-code: "https://github.com/huangfulab/Dosage-analysis"
+license: MIT
+abstract: >-
+  R workflows for OCT4 and NANOG dosage-response modelling
+  and comparison of qPCR with bulk RNA-seq expression,
+  including a study-specific neuroectoderm bulk RNA-seq workflow.
+keywords:
+  - dosage-response
+  - OCT4
+  - NANOG
+  - qPCR
+  - bulk RNA-seq
+  - DESeq2
