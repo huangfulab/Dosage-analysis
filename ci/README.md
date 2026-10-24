@@ -60,7 +60,11 @@ in the package inventory. Other R series use the snapshot's locfit.
 Exact CRAN sources are looked up in both Archive and current source locations;
 current releases such as matrixStats 1.5.0 may not yet have an Archive entry.
 The Ubuntu jobs install ImageMagick C++ headers for the magick dependency in
-newer GSVA/SpatialExperiment dependency graphs.
+newer GSVA/SpatialExperiment dependency graphs, plus `libuv1-dev` and
+`libwebp-dev` for newer fs/ragg releases in devtools' hard dependency graph.
+The system-library step checks libuv and ragg's image-library metadata with
+`pkg-config` before starting R package installation, so missing headers are
+reported early rather than as a downstream missing-devtools error.
 Transitive dependencies are **not** claimed to be their mathematical minimum
 versions. All actually installed versions, repositories, R session details,
 and test logs are uploaded as CI artifacts even when a job fails. This is not

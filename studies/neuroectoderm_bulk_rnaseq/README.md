@@ -4,7 +4,7 @@ This study-specific analysis was added during manuscript review. It links the su
 
 ## Location, provenance, and path conventions
 
-This standalone workflow lives in `studies/neuroectoderm_bulk_rnaseq/` within **Dosage-analysis**, separate from the generic runners in the repository-root `analysis/` directory. Imported from [hyein-cbio/K2LLPS_DESeq2](https://github.com/hyein-cbio/K2LLPS_DESeq2), commit `404fea0c496b6eec66f7586046c4b9064f8d0560`, with input-path and documentation adaptations. The core model formulas are retained; validation and edge-case fixes made during relocation are listed below.
+This standalone workflow lives in `studies/neuroectoderm_bulk_rnaseq/` within **Dosage-analysis**, separate from the generic runners in the repository-root `analysis/` directory. Originally imported from the standalone `hyein-cbio/K2LLPS_DESeq2` repository at commit `404fea0c496b6eec66f7586046c4b9064f8d0560`, with input-path and documentation adaptations. The workflow is now maintained here and does not require access to the original repository. The core model formulas are retained; validation and edge-case fixes made during relocation are listed below.
 
 The study directory includes seven R scripts, this README, `.gitignore`, and `sample_metadata_draft.csv`. A synthetic integration test is supplied at repository-root `tests/test_neuroectoderm_workflow.R`. **Expression matrices, `260320_OCT4_qPCR.xlsx`, and generated outputs are not included.** The relocated scripts have been exercised with synthetic inputs, not the original study data. All study-specific numerical results described below refer to the original analysis, not a new study run in this repository.
 
