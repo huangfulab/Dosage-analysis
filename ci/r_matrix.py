@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emit the complete supported R matrix; fail if a new release lacks a baseline."""
+"""Validate every supported R baseline and emit all or one selected series."""
 import argparse
 import csv
 import datetime
@@ -11,7 +11,7 @@ import urllib.request
 ROOT = Path(__file__).resolve().parent
 
 
-def matrix(release_version):
+def matrix(release_version, r_series="all"):
     with (ROOT / "r-versions.csv").open(newline="") as stream:
         rows = list(csv.DictReader(stream))
     with (ROOT / "minimum-packages.csv").open(newline="") as stream:
@@ -43,18 +43,23 @@ def matrix(release_version):
     current = f"{match[1]}.{match[2]}"
     if current not in series:
         raise ValueError(f"R {current} has no dependency baseline; extend BOTH CI CSV files before claiming support")
+    if r_series != "all":
+        if r_series not in series:
+            raise ValueError(f"Unknown R series selection: {r_series!r}; use all or a declared minor series")
+        rows = [row for row in rows if row["r"] == r_series]
     return {"include": rows}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--release-version", help="Offline validation override; CI queries the R-hub stable-release service")
+    parser.add_argument("--r-series", default="all", help="Emit all declared series (default) or one minor series, e.g. 4.6")
     args = parser.parse_args()
     release = args.release_version
     if release is None:
         with urllib.request.urlopen("https://api.r-hub.io/rversions/r-release", timeout=30) as response:
             release = json.load(response)["version"]
-    print(json.dumps(matrix(release), separators=(",", ":")))
+    print(json.dumps(matrix(release, r_series=args.r_series), separators=(",", ":")))
 
 
 if __name__ == "__main__":

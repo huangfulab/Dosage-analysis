@@ -12,6 +12,9 @@ for (minor in 0:6) {
   if (minor == 0L) {
     stopifnot(identical(plan$compatibility_packages$package, "locfit"),
       identical(plan$compatibility_packages$version, "1.5-9.4"))
+  } else if (minor == 6L) {
+    stopifnot(identical(plan$compatibility_packages$package, "cowplot"),
+      identical(plan$compatibility_packages$version, "1.1.3"))
   } else stopifnot(NROW(plan$compatibility_packages) == 0L)
   installed = cbind(Package=wanted$package, Version=wanted$version)
   verify_dependency_versions(plan, installed=installed, load=F)
@@ -52,6 +55,18 @@ installed[1L, "Imports"] = "missingPackage"
 expect_error(verify_hard_dependencies(installed), "missing hard dependency")
 installed[1L, "Imports"] = "two (nonsense)"
 expect_error(verify_hard_dependencies(installed), "Unrecognized hard dependency")
+
+# The R 4.6 snapshot's cowplot 1.2.0 conflicts with the ggplot2 floor.
+# A transitive compatibility pin must resolve that conflict without raising it.
+installed = cbind(
+  Package=c("cowplot", "ggplot2"), Version=c("1.2.0", "3.4.3"),
+  Depends=c("R (>= 3.5.0)", NA_character_),
+  Imports=c("ggplot2 (>= 3.5.2)", NA_character_), LinkingTo=NA_character_
+)
+expect_error(verify_hard_dependencies(installed), "cowplot requires ggplot2 (>= 3.5.2)")
+installed[1L, "Version"] = minimum_plan("4.6")$compatibility_packages$version
+installed[1L, "Imports"] = "ggplot2 (>= 3.4.0)"
+verify_hard_dependencies(installed)
 
 # Verify the install guard without accessing the network or modifying a library.
 check_install_guard = function() {
