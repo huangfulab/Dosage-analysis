@@ -40,8 +40,6 @@ jobs:
       matrix: ${{ fromJSON(needs.matrix.outputs.versions) }}
     env:
       CI_R_SERIES: ${{ matrix.r }}
-      CI_R_LIBRARY: ${{ runner.temp }}/dosage-r-library
-      CI_LOG_DIR: ${{ runner.temp }}/dosage-ci-logs
       R_LIBS_SITE: ''
       MAKEFLAGS: -j2
       OMP_NUM_THREADS: '1'
@@ -51,6 +49,13 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+      - name: Initialize isolated runner paths
+        run: |
+          mkdir -p "$RUNNER_TEMP/dosage-r-library" "$RUNNER_TEMP/dosage-ci-logs"
+          {
+            echo "CI_R_LIBRARY=$RUNNER_TEMP/dosage-r-library"
+            echo "CI_LOG_DIR=$RUNNER_TEMP/dosage-ci-logs"
+          } >> "$GITHUB_ENV"
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: ${{ matrix.r }}

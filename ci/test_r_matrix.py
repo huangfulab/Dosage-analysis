@@ -1,6 +1,7 @@
 import csv
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,17 @@ class MatrixTests(unittest.TestCase):
         for release in ("4.7.0", "5.0.0", "4.6.1-devel"):
             with self.assertRaises(ValueError):
                 r_matrix.matrix(release)
+
+    def test_job_environment_uses_runtime_runner_paths(self):
+        workflow = (r_matrix.ROOT.parent / ".github/workflows/r-compatibility.yaml").read_text()
+        # GitHub does not allow the runner expression context in job-level env.
+        # Resolve temporary paths in a step through RUNNER_TEMP/GITHUB_ENV.
+        env_block = re.search(r"^    env:\n(.*?)^    defaults:", workflow, re.M | re.S)
+        self.assertIsNotNone(env_block)
+        self.assertNotIn("${{ runner.", env_block[1])
+        self.assertIn('echo "CI_R_LIBRARY=$RUNNER_TEMP/dosage-r-library"', workflow)
+        self.assertIn('echo "CI_LOG_DIR=$RUNNER_TEMP/dosage-ci-logs"', workflow)
+        self.assertLess(workflow.index("Initialize isolated runner paths"), workflow.index("r-lib/actions/setup-r"))
 
     def test_cli_json_is_valid(self):
         result = subprocess.run([sys.executable, str(r_matrix.ROOT / "r_matrix.py"),
