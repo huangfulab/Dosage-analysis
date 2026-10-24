@@ -4,6 +4,16 @@ script_argument <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = T
 script_path <- normalizePath(sub("^--file=", "", script_argument), mustWork = TRUE)
 repository_directory <- normalizePath(file.path(dirname(script_path), ".."), mustWork = TRUE)
 rscript <- file.path(R.home("bin"), "Rscript")
+source(file.path(repository_directory, "R", "cli_helpers.R"))
+# Provenance must remain valid JSON for quoted names, Windows paths, and every
+# representable ASCII control character, not just ordinary fixture paths.
+stopifnot(
+  identical(.json_encode('a"b'), '"a\\"b"'),
+  identical(.json_encode(paste0("C:", intToUtf8(92), "data")), '"C:\\\\data"'),
+  identical(.json_escape(intToUtf8(1:31)), paste(sprintf("\\u%04x", 1:31), collapse="")),
+  identical(.json_encode("한글"), '"한글"'),
+  identical(as.numeric(.json_encode(pi)), pi)
+)
 
 # Exercise the public end-to-end contract: generated input, strict CLI errors,
 # outputs/provenance, and refusal versus explicit destructive overwrite.
@@ -11,7 +21,8 @@ temporary_directory <- tempfile("dosage-cli-test-")
 dir.create(temporary_directory, recursive = TRUE)
 on.exit(unlink(temporary_directory, recursive = TRUE, force = TRUE), add = TRUE)
 
-input_file <- file.path(temporary_directory, "example data.csv")
+input_file <- file.path(temporary_directory, if (.Platform$OS.type == "unix")
+  "example\t\"data\"\n.csv" else "example data.csv")
 output_directory <- file.path(temporary_directory, "analysis results")
 
 run_rscript <- function(arguments) {
@@ -48,6 +59,35 @@ run_rscript_error <- function(arguments, pattern) {
   output <- suppressWarnings(system2(rscript, shQuote(arguments), stdout = TRUE, stderr = TRUE))
   status <- attr(output, "status")
   stopifnot(!is.null(status), status != 0L, any(grepl(pattern, output, fixed = TRUE)))
+}
+# Distinct endpoint names that sanitize to the same filename must fail before
+# creating an output directory or silently overwriting per-response artifacts.
+collision_input = file.path(temporary_directory, "collisions.csv")
+utils::write.csv(data.frame(dose=1:6, "RNA/A"=2:7, "RNA A"=3:8, check.names=F),
+  collision_input, row.names=F)
+collision_output = file.path(temporary_directory, "collision-output")
+run_rscript_error(c(runner, "--input", collision_input, "--dose-col", "dose",
+  "--response-cols", "RNA/A,RNA A", "--output-dir", collision_output), "unique output filename stems")
+stopifnot(!dir.exists(collision_output))
+protected_input_hash = file_md5(input_file)
+protected_arguments = runner_arguments
+protected_arguments[which(protected_arguments == "--output-dir") + 1L] = temporary_directory
+run_rscript_error(c(protected_arguments, "--overwrite", "true"), "must not contain input or source files")
+stopifnot(identical(file_md5(input_file), protected_input_hash))
+# A missing intermediate component must not bypass the containment check.
+protected_arguments[which(protected_arguments == "--output-dir") + 1L] =
+  file.path(temporary_directory, "new-component", "..")
+run_rscript_error(c(protected_arguments, "--overwrite", "true"), "must not contain input or source files")
+stopifnot(identical(file_md5(input_file), protected_input_hash))
+if (.Platform$OS.type == "unix") {
+  link_output = file.path(temporary_directory, "symlink-output")
+  dir.create(link_output)
+  linked_input = file.path(link_output, "input.csv")
+  stopifnot(file.symlink(input_file, linked_input))
+  link_error = tryCatch(ensure_output_directory(link_output, overwrite=T,
+    protected_paths=linked_input), error=identity)
+  stopifnot(inherits(link_error, "error"), file.exists(linked_input),
+    identical(file_md5(input_file), protected_input_hash))
 }
 run_rscript_error(c(runner, "--unknown", "value"), "Unknown command-line option(s): --unknown")
 run_rscript(runner_arguments)
@@ -97,6 +137,7 @@ stopifnot(
 )
 manifest <- utils::read.delim(file.path(output_directory, "run_manifest.tsv"), stringsAsFactors = FALSE)
 manifest_keys <- c("input_md5", "runner_source_md5", "model_source_md5", "cli_helpers_source_md5")
+stopifnot(identical(manifest$value[manifest$key == "input"], input_file))
 stopifnot(all(manifest_keys %in% manifest$key), all(nzchar(manifest$value[manifest$key %in% manifest_keys])))
 manifest_hashes <- manifest$value[match(manifest_keys, manifest$key)]
 expected_hashes <- c(

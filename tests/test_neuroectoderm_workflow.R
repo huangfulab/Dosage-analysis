@@ -108,16 +108,20 @@ main = function() {
   counts = counts + 0.25
   annotation = data.frame(gene_id=gene_ids, gene_name=gene_names, gene_biotype="protein_coding")
   annotation$gene_biotype[[26L]] = "lncRNA"
+  sox1_index = which(gene_names == "SOX1")
+  annotation$gene_biotype[sox1_index] = NA_character_
+  annotation$gene_name[[300L]] = 'TOY, "quoted" marker'
   tsv = cbind(annotation, as.data.frame(counts), as.data.frame(counts / 10))
   names(tsv) = c(names(annotation), metadata$count_column, sub("_count$", "_cpm", metadata$count_column))
   csv = tsv
   names(csv) = c(names(annotation), paste0(metadata$sample_id, "_count"), paste0(metadata$sample_id, "_cpm"))
-  write.table(tsv, file.path(input_dir, "K2LLPS-expression-matrix.tsv"), sep="\t", quote=F, row.names=F)
+  write.table(tsv, file.path(input_dir, "K2LLPS-expression-matrix.tsv"), sep="\t", quote=T, qmethod="double", row.names=F)
   write.csv(csv, file.path(input_dir, "K2LLPS-expression-matrix.csv"), row.names=F)
   workbook = data.frame(
     HZ_gRNA_name=as.integer(sub("guide", "", expected_guides)),
     JY_gRNA_name=paste0("  synthetic_", expected_guides, "  ")
   )
+  workbook$JY_gRNA_name[[1L]] = '  synthetic, "guide01"  '
   qpcr_mean = c(20, 30, 40, 50, 60, 70, 80, 90, 98, 100, 102)
   for (block in 2:5) workbook[[paste0("rep", block, "_OCT4")]] = qpcr_mean + (block - 3.5)
   workbook$rep5_OCT4[workbook$HZ_gRNA_name == 4L] = NA_real_
@@ -149,6 +153,8 @@ main = function() {
   run("00_verify_expression_files.R")
   run("01_prepare_deseq2.R", env=c(K2LLPS_DEG_LFC="2"))
   run("02_verify_pooled_deseq2_outputs.R", expected_text="PASS: verified 44 samples")
+  pooled_metadata = read.csv(file.path(output_dir, "analysis-sample-metadata.csv"))
+  stopifnot(all(pooled_metadata$jy_guide_label[pooled_metadata$guide == "guide01"] == 'synthetic, "guide01"'))
   run("03_run_guide_specific_deseq2.R")
   run("04_verify_guide_specific_outputs.R", expected_text="PASS: verified 44 samples")
   no_hits_dir = file.path(test_dir, "no-significant-guides")
@@ -161,6 +167,8 @@ main = function() {
   run("05_gene_vs_qpcr_scatter.R", c(output_dir, "--batch-all", "2"))
   run("05_gene_vs_qpcr_scatter.R", c(output_dir, "SOX1"))
   run("06_gsva_neuroectoderm_pca.R")
+  mapping = read.csv(file.path(output_dir, "gsva-neuroectoderm-gene-set.csv"))
+  stopifnot(identical(mapping$gene_id[mapping$gene_symbol == "SOX1"], gene_ids[sox1_index]))
   scores = read.csv(file.path(output_dir, "gsva-neuroectoderm-sample-scores.csv"))
   stopifnot(NROW(scores) == 44L, all(is.finite(scores$ssgsea)), any(scores$ssgsea < 0))
   run("03_run_guide_specific_deseq2.R", c(output_dir, bundle_dir), expected_status=1L,
@@ -169,9 +177,37 @@ main = function() {
     expected_text="must not replace or contain the pooled output directory")
   run("03_run_guide_specific_deseq2.R", c(output_dir, file.path(output_dir, "..")), expected_status=1L,
     expected_text="must not replace or contain the pooled output directory")
+  pooled_files = list.files(output_dir, recursive=F, full.names=T)
+  pooled_hashes = tools::md5sum(pooled_files[!file.info(pooled_files)$isdir])
+  missing_alias = file.path(bundle_dir, "new-component", "..", "outputs")
+  run("03_run_guide_specific_deseq2.R", c(output_dir, missing_alias), expected_status=1L,
+    expected_text="must not replace or contain the pooled output directory")
+  stopifnot(identical(pooled_hashes, tools::md5sum(names(pooled_hashes))))
+  # A regular-file destination forces publication to fail after staging.
+  blocked_destination = file.path(test_dir, "blocked-guide-output")
+  writeLines("sentinel", blocked_destination)
+  run("03_run_guide_specific_deseq2.R", c(output_dir, blocked_destination), expected_status=1L,
+    expected_text="Could not publish the staged guide-specific output directory")
+  stopifnot(identical(readLines(blocked_destination), "sentinel"),
+    !any(grepl("^.blocked-guide-output-staging-", list.files(test_dir, all.files=T))))
+
+  external_pooled = file.path(test_dir, "external-pooled")
+  dir.create(external_pooled)
+  source_files = c(file.path(bundle_dir, basename(scripts)),
+    file.path(bundle_dir, "sample_metadata_draft.csv"))
+  source_hashes = tools::md5sum(source_files)
+  run("03_run_guide_specific_deseq2.R", c(external_pooled, bundle_dir), expected_status=1L,
+    expected_text="study source directory")
+  stopifnot(identical(source_hashes, tools::md5sum(source_files)))
 
   # Regressions for tolerance and inconsistent expression files, isolated from
   # the pooled source outputs whose hashes are required to remain unchanged.
+  annotation_csv = file.path(test_dir, "annotation-only.csv")
+  annotation_tsv = file.path(test_dir, "annotation-only.tsv")
+  write.csv(annotation[1:3, ], annotation_csv, row.names=F)
+  write.table(annotation[1:3, ], annotation_tsv, sep="\t", quote=T, row.names=F)
+  run("00_verify_expression_files.R", c(annotation_csv, annotation_tsv,
+    file.path(test_dir, "annotation-only-check")), expected_status=1L, expected_text="PRACTICALLY_EQUAL: FALSE")
   small_csv = csv[1:3, 1:5]
   small_tsv = small_csv
   names(small_tsv)[4:5] = c("renamed_1_count", "renamed_2_count")
@@ -189,13 +225,18 @@ main = function() {
   dir.create(one_sided)
   stopifnot(all(file.copy(file.path(output_dir, c("DESeq2Obj-after-wald-test.rds", "analysis-sample-metadata.csv")), one_sided)))
   dir.create(file.path(one_sided, "guide-specific"))
+  stopifnot(file.copy(file.path(output_dir, "guide-specific", "pooled-source-md5.csv"),
+    file.path(one_sided, "guide-specific", "pooled-source-md5.csv")))
   for (guide in expected_guides[1:8]) {
     filename = sprintf("de-results-%s-vs-pooled-controls-complete.csv", guide)
     d = read.csv(file.path(output_dir, "guide-specific", filename))
     d$padj[d$log2FoldChange_raw <= 0 | is.na(d$log2FoldChange_raw)] = NA_real_
     write.csv(d, file.path(one_sided, "guide-specific", filename), row.names=F)
   }
-  run("05_gene_vs_qpcr_scatter.R", c(one_sided, "--batch-deg", "2", "--csv-only"))
+  stale_down_pdf = file.path(one_sided, "scatter-deg-down-vs-qpcr-model-fits-preview2.pdf")
+  writeLines("stale direction plot", stale_down_pdf)
+  run("05_gene_vs_qpcr_scatter.R", c(one_sided, "--batch-deg", "2"))
+  stopifnot(!file.exists(stale_down_pdf))
   up = read.csv(file.path(one_sided, "scatter-deg-up-vs-qpcr-model-aic-preview2.csv"))
   down = read.csv(file.path(one_sided, "scatter-deg-down-vs-qpcr-model-aic-preview2.csv"))
   stopifnot(NROW(up) > 0L, NROW(down) == 0L, identical(names(up), names(down)))
@@ -216,10 +257,17 @@ main = function() {
   run("05_gene_vs_qpcr_scatter.R", c(one_sided, "--batch-deg", "--csv-only"), env=c(K2LLPS_ALPHA="0.1"))
   boundary = read.csv(file.path(one_sided, "scatter-deg-vs-qpcr-model-aic.csv"))
   stopifnot(identical(boundary$gene_id, boundary_id), boundary$n_guides_deg == 8L)
+  # A new pooled object must not be paired with old stage-03 guide results.
+  stale_path = file.path(one_sided, "DESeq2Obj-after-wald-test.rds")
+  stale_dds = readRDS(stale_path)
+  attr(stale_dds, "synthetic_revision") = "rerun-stage-01"
+  saveRDS(stale_dds, stale_path)
+  run("05_gene_vs_qpcr_scatter.R", c(one_sided, "--batch-deg", "--csv-only"),
+    expected_status=1L, expected_text="Stale guide-specific outputs")
   stopifnot(identical(protected_hashes, tools::md5sum(protected_files)))
   message("PASS: existing repository data/results unchanged; synthetic execution and regressions completed.")
   successful = T
 }
 
 main()
-devtools::session_info(pkgs="attached")
+sessionInfo()

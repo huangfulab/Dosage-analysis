@@ -361,7 +361,7 @@ fit_qpcr_bulk_rna_models = function(aggregate, prediction_points = 201L) {
     sink_file = NULL
     sink_connection = NULL
     output_sink_depth = sink.number(type = "output")
-    message_sink_depth = sink.number(type = "message")
+    message_sink_connection = getConnection(sink.number(type="message"))
     graphics_devices_before = grDevices::dev.list()
     on.exit({
       # drc may open a default graphics device while reporting an optimizer
@@ -376,9 +376,7 @@ fit_qpcr_bulk_rna_models = function(aggregate, prediction_points = 201L) {
         try(grDevices::dev.off(which = device), silent = TRUE)
       }
       try({
-        while (sink.number(type = "message") > message_sink_depth) {
-          sink(type = "message")
-        }
+        sink(message_sink_connection, type="message")
       }, silent = TRUE)
       try({
         while (sink.number(type = "output") > output_sink_depth) {
@@ -1210,17 +1208,19 @@ plot_qpcr_bulk_rna_deg_model_overview = function(
       main = sprintf("%s: model overview", gene))
     graphics::mtext("Relative support is descriptive; models do not establish mechanistic truth.",
       side = 3L, line = 0.4, cex = 0.72, col = "grey35")
-    valid_rmse <- is.finite(rows$rmse)
-    rmse_max <- if (any(valid_rmse)) max(rows$rmse[valid_rmse]) else 1
-    if (!is.finite(rmse_max) || rmse_max <= 0) rmse_max <- 1
-    graphics::par(new = TRUE)
-    graphics::plot(x, rows$rmse, type = "p", pch = 19, col = colors[models],
-      axes = FALSE, xlab = "", ylab = "", xlim = range(x) + c(-0.5, 0.5), ylim = c(0, rmse_max * 1.25))
-    graphics::axis(4L); graphics::mtext("RMSE", side = 4L, line = 2.5)
+    # Label bars while the active user coordinates still represent weights.
     for (index in seq_along(models)) {
       label <- if (!isTRUE(rows$converged[index])) "failed" else if (isTRUE(rows$aic_tie[index])) "tie" else if (isTRUE(rows$aic_winner[index])) "winner" else ""
       if (nzchar(label)) graphics::text(x[index], weights[index] + heights * 0.04, label, cex = 0.75)
     }
+    valid_rmse <- is.finite(rows$rmse)
+    rmse_max <- if (any(valid_rmse)) max(rows$rmse[valid_rmse]) else 1
+    if (!is.finite(rmse_max) || rmse_max <= 0) rmse_max <- 1
+    weight_xlim = graphics::par("usr")[1:2]
+    graphics::par(new = TRUE)
+    graphics::plot(x, rows$rmse, type = "p", pch = 19, col = colors[models],
+      axes = FALSE, xlab = "", ylab = "", xlim = weight_xlim, xaxs="i", ylim = c(0, rmse_max * 1.25))
+    graphics::axis(4L); graphics::mtext("RMSE", side = 4L, line = 2.5)
     graphics::legend("topright", legend = c("AIC weight", "RMSE"), pch = c(15, 19),
       col = c("grey35", "grey35"), bty = "n", cex = 0.8)
   }

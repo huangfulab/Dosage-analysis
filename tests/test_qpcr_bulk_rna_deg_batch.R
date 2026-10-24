@@ -93,6 +93,26 @@ overview_file = tempfile(fileext = ".pdf")
 overview_result = plot_qpcr_bulk_rna_deg_model_overview(batch_fit, overview_file)
 stopifnot(overview_result$pages == 3L, file.exists(overview_file), file.info(overview_file)$size > 0)
 unlink(overview_file)
+# Small/large RMSE must not move or clip winner/tie/failure labels, which are
+# in Akaike-weight coordinates rather than the overlaid RMSE coordinates.
+check_overview_coordinates = function() {
+  trace("text.default", where=asNamespace("graphics"), print=F, tracer=quote({
+    if (any(labels %in% c("winner", "tie", "failed"))) {
+      limits = graphics::par("usr")
+      stopifnot(limits[[4L]] < 2, all(y >= limits[[3L]] & y <= limits[[4L]]))
+    }
+  }))
+  on.exit(untrace("text.default", where=asNamespace("graphics")), add=T)
+  output = tempfile(fileext=".pdf")
+  on.exit(unlink(output), add=T)
+  for (scale in c(1e-3, 100)) {
+    scaled = tied_fit
+    for (gene in names(scaled$fits)) scaled$fits[[gene]]$model_table$rmse =
+      scaled$fits[[gene]]$model_table$rmse * scale
+    plot_qpcr_bulk_rna_deg_model_overview(scaled, output)
+  }
+}
+check_overview_coordinates()
 
 plot_file = tempfile(fileext = ".pdf")
 plot_result = plot_qpcr_bulk_rna_deg_batch(batch_fit, file = plot_file)

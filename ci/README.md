@@ -21,7 +21,7 @@ Common direct-package floors:
 | Package | Assumed minimum |
 | --- | --- |
 | drc | 3.0-1 |
-| ggplot2 | 3.4.0 (the study plots use `linewidth`) |
+| ggplot2 | 3.4.0 on R 4.0–4.3; 3.4.3 on R 4.4+ (`linewidth` and strict version comparisons) |
 | ggrepel | 0.9.2 |
 | openxlsx | 4.2.5.1 |
 | pheatmap | 1.0.12 |
@@ -36,8 +36,8 @@ R/Bioconductor-specific floors:
 | 4.2 | 3.15 | 1.36.0 | 1.44.5 | 0.63.0 | 2022-11-08 |
 | 4.3 | 3.17 | 1.40.2 | 1.48.3 | 1.0.0 | 2023-09-15 |
 | 4.4 | 3.19 | 1.44.0 | 1.52.3 | 1.0.0 | 2024-06-15 |
-| 4.5 | 3.21 | 1.48.2 | 2.2.1 | 1.4.1 | 2025-06-15 |
-| 4.6 | 3.23 | 1.52.0 | 2.6.14 | 1.4.1 | 2026-07-01 |
+| 4.5 | 3.21 | 1.48.2 | 2.2.1 | 1.5.0 | 2025-06-15 |
+| 4.6 | 3.23 | 1.52.0 | 2.6.14 | 1.5.0 | 2026-07-01 |
 
 The Bioconductor release/package series follow the earliest Bioconductor
 release for each R series, using explicit maintenance patch versions. These
@@ -45,11 +45,22 @@ conservative floors are assumptions to test, **not the absolute first version
 ever released**. The matrixStats floors account for the selected
 MatrixGenerics versions; old Bioconductor code must not be combined silently
 with a much newer matrixStats that has removed legacy `useNames` behaviour.
+On R 4.5+, matrixStats 1.5.0 avoids the removed `Calloc`/`Free` C APIs.
+The newer-R ggplot2 floor avoids numeric version comparisons rejected by R.
+These revised floors still require validation in the complete CI jobs.
 
 Only runtime/build dependencies (`Depends`, `Imports`, `LinkingTo`) are
 installed, not the entire `Suggests` graph. The installer uses the selected
 Bioconductor repositories and a dated Posit CRAN snapshot for transitive
 dependencies, then asserts all nine direct pins and dependency constraints.
+For R 4.0 only, `locfit` is explicitly pinned to **1.5-9.4** before installing
+DESeq2: the shared 2022 snapshot carries locfit 1.5-9.6, which requires R >= 4.1.
+This compatibility pin is verified alongside the nine direct floors and recorded
+in the package inventory. Other R series use the snapshot's locfit.
+Exact CRAN sources are looked up in both Archive and current source locations;
+current releases such as matrixStats 1.5.0 may not yet have an Archive entry.
+The Ubuntu jobs install ImageMagick C++ headers for the magick dependency in
+newer GSVA/SpatialExperiment dependency graphs.
 Transitive dependencies are **not** claimed to be their mathematical minimum
 versions. All actually installed versions, repositories, R session details,
 and test logs are uploaded as CI artifacts even when a job fails. This is not
@@ -64,7 +75,9 @@ previously installed newer version.
 ## Tests required in every R job
 
 1. Exact-version and hard-dependency verification, plus CI utility tests.
-2. `make test`: all six generic model and CLI test suites.
+   Tests use base `sessionInfo()` so old sessioninfo releases cannot fail while
+   formatting an empty attached-package list.
+2. `make test`: all seven generic model, runtime-state, and CLI test suites.
 3. `Rscript tests/test_gsva_compat.R`: legacy and parameter-object argument
    mapping, early constructors without `verbose`, error propagation, and
    comparison with native calls to the installed GSVA implementation.

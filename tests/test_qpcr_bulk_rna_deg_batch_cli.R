@@ -63,6 +63,14 @@ run_rscript_error(c(
   "--output-dir", output_directory
 ), "`--expected-points` must be one positive integer.")
 run_rscript(runner_arguments)
+# An optional selection file is also an input, even when the main input is elsewhere.
+protected_deg = file.path(output_directory, "genes.csv")
+write.csv(data.frame(gene="GENE_LINEAR"), protected_deg, row.names=F)
+deg_hash = tools::md5sum(protected_deg)
+run_rscript_error(c(runner_arguments, "--deg-file", protected_deg, "--overwrite", "true"),
+  "must not contain input or source files")
+stopifnot(identical(tools::md5sum(protected_deg), deg_hash))
+unlink(protected_deg)
 
 expected_outputs = c(
   "selected_long_input.csv",

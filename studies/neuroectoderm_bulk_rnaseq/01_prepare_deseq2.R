@@ -213,7 +213,7 @@ if (!file.exists(metadata_path)) {
   )
 
   dir.create(dirname(metadata_path), recursive=T, showWarnings=F)
-  write.csv(inferred_metadata, metadata_path, row.names=F, quote=F)
+  write.csv(inferred_metadata, metadata_path, row.names=F, quote=T)
   message("Created draft metadata from the verified CSV-to-TSV header map: ", metadata_path)
 }
 metadata_path = normalizePath(metadata_path, mustWork=T)
@@ -404,7 +404,7 @@ write.csv(
   data.frame(metadata, row.names=NULL, check.names=F),
   file.path(output_dir, "analysis-sample-metadata.csv"),
   row.names=F,
-  quote=F,
+  quote=T,
   na="NA"
 )
 
@@ -548,8 +548,8 @@ significant_table = result_table[result_table$significant_fdr, , drop=F]
 
 complete_results_path = file.path(output_dir, "de-results-oct4-targeting-vs-pooled-controls-complete.csv")
 significant_results_path = file.path(output_dir, "de-results-oct4-targeting-vs-pooled-controls-significant.csv")
-write.csv(result_table, complete_results_path, row.names=F, quote=F, na="NA")
-write.csv(significant_table, significant_results_path, row.names=F, quote=F, na="NA")
+write.csv(result_table, complete_results_path, row.names=F, quote=T, na="NA")
+write.csv(significant_table, significant_results_path, row.names=F, quote=T, na="NA")
 
 cooks_matrix = assays(DESeq2Obj)[["cooks"]]
 cooks_max = apply(cooks_matrix, 2L, max_or_na)
@@ -579,7 +579,7 @@ sample_qc = data.frame(
   row.names=NULL,
   check.names=F
 )
-write.csv(sample_qc, file.path(output_dir, "sample_qc.csv"), row.names=F, quote=F, na="NA")
+write.csv(sample_qc, file.path(output_dir, "sample_qc.csv"), row.names=F, quote=T, na="NA")
 
 # Diagnostic plots use a validated two-category palette and retain a table-view
 # companion through the exported PCA coordinates and complete result table.
@@ -615,7 +615,7 @@ pca_data = pca_data[, c(
   "sample_id", "guide", "jy_guide_label", "replicate", "comparison_group",
   "guide_class", "qpcr_oct4_post_treatment", "PC1", "PC2"
 )]
-write.csv(pca_data, file.path(output_dir, "pca-coordinates.csv"), row.names=F, quote=F, na="NA")
+write.csv(pca_data, file.path(output_dir, "pca-coordinates.csv"), row.names=F, quote=T, na="NA")
 
 png(
   filename=file.path(output_dir, "pca-oct4-targeting-vs-pooled-controls.png"),
@@ -757,7 +757,7 @@ pca_loadings_table = pca_loadings_table[order(-pca_loadings_table$PC1_loading, p
 rownames(pca_loadings_table) = NULL
 
 pca_loadings_path = file.path(output_dir, "pca-loadings-oct4-targeting-vs-pooled-controls.csv")
-write.csv(pca_loadings_table, pca_loadings_path, row.names=F, quote=F, na="NA")
+write.csv(pca_loadings_table, pca_loadings_path, row.names=F, quote=T, na="NA")
 
 make_loading_display_label = function(gene_name, gene_id) {
   duplicate_gene_name = duplicated(gene_name) | duplicated(gene_name, fromLast=T)
@@ -827,7 +827,7 @@ for (axis_spec in pca_axis_specs) {
     pca_loadings_extremes,
     file.path(output_dir, axis_spec$extremes_csv),
     row.names=F,
-    quote=F,
+    quote=T,
     na="NA"
   )
 
@@ -904,7 +904,7 @@ for (axis_spec in pca_axis_specs) {
   if (!is.finite(max_loading_radius) || max_loading_radius <= 0) {
     stop_with("Selected %s gene loadings have non-positive radius; cannot draw arrows", axis_spec$axis)
   }
-  write.csv(pca_arrows, file.path(output_dir, axis_spec$arrows_csv), row.names=F, quote=F, na="NA")
+  write.csv(pca_arrows, file.path(output_dir, axis_spec$arrows_csv), row.names=F, quote=T, na="NA")
 
   x_range = range(c(pca_arrows$PC1_arrow, 0), finite=T)
   y_range = range(c(pca_arrows$PC2_arrow, 0), finite=T)
@@ -1055,7 +1055,7 @@ write.csv(
   pc1_species_table,
   file.path(output_dir, "pca-pc1-score-by-grna-species.csv"),
   row.names=F,
-  quote=F,
+  quote=T,
   na="NA"
 )
 pc1_species_median_table = data.frame(
@@ -1070,7 +1070,7 @@ write.csv(
   pc1_species_median_table,
   file.path(output_dir, "pca-pc1-score-by-grna-species-medians.csv"),
   row.names=F,
-  quote=F,
+  quote=T,
   na="NA"
 )
 pc1_species_violin = ggplot2::ggplot(
@@ -1216,7 +1216,7 @@ deg_table_path = file.path(
   output_dir,
   "degs-oct4-targeting-vs-pooled-controls-lfc1-padj0.05.csv"
 )
-write.csv(deg_table, deg_table_path, row.names=F, quote=F, na="NA")
+write.csv(deg_table, deg_table_path, row.names=F, quote=T, na="NA")
 
 # Row-z heatmap on VST expression for the strict DEG set.
 vst_deg_matrix = assay(vst_data)[deg_table$gene_id, metadata$sample_id, drop=F]

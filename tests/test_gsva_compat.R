@@ -104,4 +104,4 @@ for (method in c("ssgsea", "gsva")) {
   message("PASS: ", method, " ", if (is.null(constructor)) "legacy" else "parameter-object", " API")
 }
 message("GSVA compatibility dispatch, settings, failure propagation, and installed-package tests passed.")
-devtools::session_info(pkgs="attached")
+sessionInfo()

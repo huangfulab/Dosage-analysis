@@ -1,6 +1,7 @@
 .PHONY: test example qpcr-bulk-example qpcr-bulk-deg-example
 
 test:
+	Rscript tests/test_runtime_state.R
 	Rscript tests/test_models.R
 	Rscript tests/test_cli.R
 	Rscript tests/test_qpcr_bulk_rna_models.R

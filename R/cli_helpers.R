@@ -65,24 +65,31 @@ parse_cli_numeric_list <- function(value, name, integer = FALSE) {
 
 # Safety boundary: overwrite = TRUE recursively removes every immediate child
 # of `path`; callers must select and validate the output directory beforehand.
-ensure_output_directory <- function(path, overwrite = FALSE) {
-  if (dir.exists(path)) {
-    entries <- list.files(path, all.files = TRUE, no.. = TRUE, include.dirs = TRUE)
-    if (length(entries) > 0L && !isTRUE(overwrite)) {
-      stop(
-        "Output directory is not empty; use `--overwrite true` to replace its contents.",
-        call. = FALSE
-      )
-    }
-    if (isTRUE(overwrite) && length(entries) > 0L) {
-      unlink(file.path(path, entries), recursive = TRUE, force = TRUE)
-    }
-    return(invisible(path))
+ensure_output_directory <- function(path, overwrite = FALSE, protected_paths=character()) {
+  if (file.exists(path) && !dir.exists(path)) {
+    stop(sprintf("Output path exists but is not a directory: %s", path), call.=F)
   }
-  if (file.exists(path)) {
-    stop(sprintf("Output path exists but is not a directory: %s", path), call. = FALSE)
+  # Resolve aliases with initially missing components before checking contents
+  # or deleting anything. Never remove an input or executing source file.
+  dir.create(path, recursive=T, showWarnings=F)
+  if (!dir.exists(path)) stop("Could not create output directory: ", path, call.=F)
+  canonical = normalizePath(path, winslash="/", mustWork=T)
+  protected = c(
+    vapply(protected_paths, normalizePath, character(1), winslash="/", mustWork=T),
+    file.path(vapply(dirname(protected_paths), normalizePath, character(1), winslash="/", mustWork=T),
+      basename(protected_paths))
+  )
+  if (any(protected == canonical | startsWith(protected, paste0(sub("/$", "", canonical), "/"))) ||
+      grepl("^([A-Za-z]:)?/$", canonical) || grepl("^//[^/]+/[^/]+/?$", canonical)) {
+    stop("Output directory must not contain input or source files.", call.=F)
   }
-  dir.create(path, recursive = TRUE, showWarnings = FALSE)
+  entries <- list.files(path, all.files=TRUE, no..=TRUE, include.dirs=TRUE)
+  if (length(entries) > 0L && !isTRUE(overwrite)) {
+    stop("Output directory is not empty; use `--overwrite true` to replace its contents.", call.=F)
+  }
+  if (isTRUE(overwrite) && length(entries) > 0L) {
+    unlink(file.path(path, entries), recursive=TRUE, force=TRUE)
+  }
   invisible(path)
 }
 
@@ -101,11 +108,13 @@ write_base_session_info <- function(path) {
 
 .json_escape <- function(value) {
   value <- enc2utf8(as.character(value))
-  value <- gsub("\\\\", "\\\\\\\\", value, fixed = TRUE)
-  value <- gsub("\"", "\\\\\"", value, fixed = TRUE)
-  value <- gsub("\n", "\\\\n", value, fixed = TRUE)
-  value <- gsub("\r", "\\\\r", value, fixed = TRUE)
-  gsub("\t", "\\\\t", value, fixed = TRUE)
+  value = gsub("\\", "\\\\", value, fixed=T)
+  value = gsub("\"", "\\\"", value, fixed=T)
+  # JSON forbids literal control characters; R strings cannot contain NUL.
+  for (code in 1:31) {
+    value = gsub(intToUtf8(code), sprintf("\\u%04x", code), value, fixed=T)
+  }
+  value
 }
 
 # Encode the small, known provenance data model without adding a JSON package
@@ -129,7 +138,7 @@ write_base_session_info <- function(path) {
   if (is.logical(value)) {
     encoded <- ifelse(is.na(value), "null", ifelse(value, "true", "false"))
   } else if (is.numeric(value) || is.integer(value)) {
-    encoded <- ifelse(is.finite(value), format(value, scientific = FALSE, trim = TRUE), "null")
+    encoded <- ifelse(is.finite(value), format(value, scientific=FALSE, trim=TRUE, digits=17L, decimal.mark="."), "null")
   } else {
     encoded <- ifelse(is.na(value), "null", paste0("\"", .json_escape(value), "\""))
   }

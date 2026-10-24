@@ -190,13 +190,13 @@ fit_ll4 = function(fit_data, response_min, response_max) {
     sink_file = NULL
     sink_connection = NULL
     output_sink_depth = sink.number(type="output")
-    message_sink_depth = sink.number(type="message")
+    message_sink_connection = getConnection(sink.number(type="message"))
     graphics_devices_before = grDevices::dev.list()
     on.exit({
       graphics_devices_after = grDevices::dev.list()
       opened = setdiff(as.integer(graphics_devices_after), as.integer(graphics_devices_before))
       for (device in opened) try(grDevices::dev.off(which=device), silent=T)
-      try({ while (sink.number(type="message") > message_sink_depth) sink(type="message") }, silent=T)
+      try(sink(message_sink_connection, type="message"), silent=T)
       try({ while (sink.number(type="output") > output_sink_depth) sink(type="output") }, silent=T)
       if (inherits(sink_connection, "connection")) try(close(sink_connection), silent=T)
       if (!is.null(sink_file)) try(unlink(sink_file), silent=T)
@@ -933,6 +933,26 @@ collapse_duplicate_gene_names = function(gene_table) {
 }
 
 load_union_pairwise_degs = function(guide_dir, alpha_cutoff, lfc_cutoff) {
+  # A rerun of stage 01 may leave old guide tables beside a new pooled object.
+  # Check the exact pooled inputs used by this downstream analysis before
+  # mixing current expression with guide-specific DEG membership/direction.
+  manifest_path = file.path(guide_dir, "pooled-source-md5.csv")
+  if (!file.exists(manifest_path)) {
+    stop_with("Missing guide source manifest; run 03_run_guide_specific_deseq2.R first")
+  }
+  source_manifest = read.csv(manifest_path, check.names=F, stringsAsFactors=F)
+  required_sources = c(dds_path, meta_path)
+  if (!all(c("file", "size_bytes", "md5") %in% names(source_manifest)) ||
+      anyDuplicated(source_manifest$file) ||
+      !all(basename(required_sources) %in% source_manifest$file)) {
+    stop_with("Invalid guide source manifest; rerun 03_run_guide_specific_deseq2.R")
+  }
+  recorded = source_manifest[match(basename(required_sources), source_manifest$file), , drop=F]
+  if (anyNA(recorded$md5) || anyNA(recorded$size_bytes) ||
+      !identical(as.character(recorded$md5), unname(tools::md5sum(required_sources))) ||
+      !identical(as.numeric(recorded$size_bytes), as.numeric(file.info(required_sources)$size))) {
+    stop_with("Stale guide-specific outputs: pooled sources changed; rerun 03_run_guide_specific_deseq2.R")
+  }
   target_guides = c(
     "guide01", "guide02", "guide03", "guide04",
     "guide05", "guide06", "guide14", "guide15"
@@ -1062,6 +1082,10 @@ process_gene_table = function(gene_table, direction_label, pdf_path, aic_path, y
     if (csv_only) aic_path else pdf_path
   ))
   if (n == 0L) {
+    if (!csv_only && file.exists(pdf_path)) {
+      unlink(pdf_path)
+      if (file.exists(pdf_path)) stop_with("Could not remove stale empty-direction PDF: %s", pdf_path)
+    }
     empty = merge_annotation_columns(
       make_failed_aic_row(NA_character_, NA_character_, NA_character_, NA_real_, "")[FALSE, , drop=F],
       sub
@@ -1160,8 +1184,8 @@ run_deg_batch = function(deg_table, label) {
 
   message(sprintf("Done %s.", label))
   if (!csv_only) {
-    message("UP PDF: ", up_pdf)
-    message("DOWN PDF: ", down_pdf)
+    message("UP PDF: ", if (file.exists(up_pdf)) up_pdf else "[no genes; no PDF]")
+    message("DOWN PDF: ", if (file.exists(down_pdf)) down_pdf else "[no genes; no PDF]")
   }
   message("UP AIC: ", up_aic)
   message("DOWN AIC: ", down_aic)
