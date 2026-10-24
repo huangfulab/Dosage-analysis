@@ -1,0 +1,101 @@
+name: R compatibility and minimum dependencies
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: r-compatibility-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  matrix:
+    name: Validate R coverage and dependency baselines
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      versions: ${{ steps.matrix.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test CI matrix logic
+        run: python3 -m unittest discover -s ci -p 'test_*.py' -v
+      - name: Discover the stable R release and emit all supported series
+        id: matrix
+        run: echo "versions=$(python3 ci/r_matrix.py)" >> "$GITHUB_OUTPUT"
+
+  minimum:
+    name: R ${{ matrix.r }} / assumed minimum dependencies
+    needs: matrix
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJSON(needs.matrix.outputs.versions) }}
+    env:
+      CI_R_SERIES: ${{ matrix.r }}
+      R_LIBS_SITE: ''
+      MAKEFLAGS: -j2
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize isolated runner paths
+        run: |
+          mkdir -p "$RUNNER_TEMP/dosage-r-library" "$RUNNER_TEMP/dosage-ci-logs"
+          {
+            echo "CI_R_LIBRARY=$RUNNER_TEMP/dosage-r-library"
+            echo "CI_LOG_DIR=$RUNNER_TEMP/dosage-ci-logs"
+          } >> "$GITHUB_ENV"
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.r }}
+          use-public-rspm: false
+      - name: Install system libraries for the hard dependency closure
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential gfortran cmake pkg-config pandoc poppler-utils \
+            libcurl4-openssl-dev libssl-dev libxml2-dev libgit2-dev \
+            libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev \
+            libpng-dev libtiff5-dev libjpeg-dev libhdf5-dev libglpk-dev \
+            libgmp3-dev libmpfr-dev libudunits2-dev libnlopt-dev libicu-dev
+      - name: Isolate the R library and validate CI metadata
+        run: |
+          mkdir -p "$CI_R_LIBRARY" "$CI_LOG_DIR"
+          echo "R_LIBS_USER=$CI_R_LIBRARY" >> "$GITHUB_ENV"
+          Rscript -e 'series=paste(R.version$major, strsplit(R.version$minor, ".", fixed=T)[[1]][[1]], sep="."); stopifnot(identical(series, Sys.getenv("CI_R_SERIES")))'
+      - name: Install and assert exact direct dependency floors
+        run: Rscript ci/dependencies.R --install 2>&1 | tee "$CI_LOG_DIR/install.log"
+      - name: Verify dependency constraints and CI utilities
+        run: |
+          Rscript ci/dependencies.R --verify 2>&1 | tee "$CI_LOG_DIR/dependency-verification.log"
+          Rscript tests/test_ci_dependencies.R 2>&1 | tee "$CI_LOG_DIR/ci-utilities.log"
+      - name: Test the six generic model and CLI suites
+        run: make test 2>&1 | tee "$CI_LOG_DIR/generic-tests.log"
+      - name: Test GSVA API compatibility and native scoring
+        run: Rscript tests/test_gsva_compat.R 2>&1 | tee "$CI_LOG_DIR/gsva-compatibility.log"
+      - name: Test the complete synthetic 44-sample study workflow
+        run: Rscript tests/test_neuroectoderm_workflow.R 2>&1 | tee "$CI_LOG_DIR/study-integration.log"
+      - name: Confirm tests did not alter tracked files
+        run: git diff --exit-code && git diff --cached --exit-code
+      - name: Record the installed environment even on failure
+        if: always()
+        run: Rscript ci/dependencies.R --report
+      - name: Preserve validation logs and package inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r-${{ matrix.r }}-minimum-dependency-logs
+          path: ${{ env.CI_LOG_DIR }}
+          if-no-files-found: warn
+          retention-days: 14
