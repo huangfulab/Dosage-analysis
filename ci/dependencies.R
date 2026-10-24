@@ -10,11 +10,16 @@ minimum_plan = function(r_series, root="ci") {
   stopifnot(NROW(row) == 1L, r_series %in% names(packages))
   plan = data.frame(package=packages$package, version=packages[[r_series]],
     source=packages$source, stringsAsFactors=F)
-  list(r=r_series, bioconductor=row$bioconductor, cran_snapshot=row$cran_snapshot, packages=plan)
+  # The shared 2022 snapshot's locfit requires R >= 4.1. DESeq2 on R 4.0
+  # therefore needs the last R-4.0-compatible source, not a newer direct floor.
+  compatibility = data.frame(package="locfit", version="1.5-9.4", source="CRAN", stringsAsFactors=F)
+  if (r_series != "4.0") compatibility = compatibility[FALSE, , drop=F]
+  list(r=r_series, bioconductor=row$bioconductor, cran_snapshot=row$cran_snapshot,
+    packages=plan, compatibility_packages=compatibility)
 }
 
 verify_dependency_versions = function(plan, installed=utils::installed.packages(), load=T) {
-  wanted = plan$packages
+  wanted = rbind(plan$compatibility_packages, plan$packages)
   selected = match(wanted$package, installed[, "Package"])
   if (anyNA(selected)) stop("Missing minimum dependencies: ", paste(wanted$package[is.na(selected)], collapse=", "))
   actual = installed[selected, "Version"]
@@ -71,6 +76,33 @@ write_ci_environment = function(log_dir) {
   writeLines(capture.output(sessionInfo()), file.path(log_dir, "session-info.txt"))
 }
 
+exact_source_urls = function(package, version, source, bioc) {
+  if (source == "Bioconductor") {
+    return(sprintf("%s/bioc/src/contrib/%s_%s.tar.gz", bioc, package, version))
+  }
+  c(sprintf("https://cran.r-project.org/src/contrib/Archive/%s/%s_%s.tar.gz", package, package, version),
+    sprintf("https://cran.r-project.org/src/contrib/%s_%s.tar.gz", package, version))
+}
+
+# A still-current CRAN release has no Archive entry. Try both locations for
+# the SAME exact version; never interpret a missing archive as permission to
+# upgrade the floor. The injected downloader permits offline fallback tests.
+download_exact_source = function(urls, destination, download=utils::download.file) {
+  for (url in urls) {
+    unlink(destination)
+    downloaded = tryCatch({
+      status = suppressWarnings(download(url, destination, mode="wb"))
+      isTRUE(status == 0L) && file.exists(destination) && file.info(destination)$size > 0
+    }, error=function(error) {
+      message("Source unavailable: ", url, "; ", conditionMessage(error))
+      F
+    })
+    if (isTRUE(downloaded)) return(invisible(url))
+  }
+  unlink(destination)
+  stop("Could not download exact package source: ", paste(urls, collapse=", "))
+}
+
 install_minimum_dependencies = function(plan) {
   if (!identical(Sys.getenv("GITHUB_ACTIONS"), "true")) {
     stop("--install is restricted to disposable GitHub Actions libraries")
@@ -87,7 +119,8 @@ install_minimum_dependencies = function(plan) {
   log_dir = Sys.getenv("CI_LOG_DIR", unset=tempdir())
   dir.create(log_dir, recursive=T, showWarnings=F)
   on.exit(write_ci_environment(log_dir), add=T)
-  utils::write.csv(plan$packages, file.path(log_dir, "assumed-minimum-packages.csv"), row.names=F)
+  packages = rbind(plan$compatibility_packages, plan$packages)
+  utils::write.csv(packages, file.path(log_dir, "assumed-minimum-packages.csv"), row.names=F)
   writeLines(c(paste("R series:", plan$r), paste("Bioconductor:", plan$bioconductor),
     paste("CRAN snapshot:", cran)), file.path(log_dir, "repositories.txt"))
 
@@ -98,16 +131,18 @@ install_minimum_dependencies = function(plan) {
   utils::download.file("https://cran.r-project.org/src/contrib/Archive/remotes/remotes_2.4.2.tar.gz", bootstrap, mode="wb")
   utils::install.packages(bootstrap, repos=NULL, type="source", lib=library)
   if (!requireNamespace("remotes", quietly=T)) stop("Could not bootstrap remotes")
-  for (i in seq_len(NROW(plan$packages))) {
-    package = plan$packages[i, ]
-    source_url = if (package$source == "Bioconductor") {
-      sprintf("%s/bioc/src/contrib/%s_%s.tar.gz", bioc, package$package, package$version)
-    } else {
-      sprintf("https://cran.r-project.org/src/contrib/Archive/%s/%s_%s.tar.gz", package$package, package$package, package$version)
-    }
-    message("Installing assumed minimum: ", package$package, " ", package$version)
-    remotes::install_url(source_url, lib=library, dependencies=NA, upgrade="never",
+  # Compatibility pins must precede direct packages so dependency resolution
+  # sees a supported installed version before attempting the snapshot version.
+  source_archive = tempfile(fileext=".tar.gz")
+  on.exit(unlink(source_archive), add=T)
+  for (i in seq_len(NROW(packages))) {
+    package = packages[i, ]
+    urls = exact_source_urls(package$package, package$version, package$source, bioc)
+    source_url = download_exact_source(urls, source_archive)
+    message("Installing assumed minimum: ", package$package, " ", package$version, " from ", source_url)
+    remotes::install_local(source_archive, lib=library, dependencies=NA, upgrade="never",
       build_vignettes=F, repos=repositories, quiet=F)
+    unlink(source_archive)
   }
   # Dependencies installed for a later direct package may have replaced an
   # earlier pin. Any such replacement is a failure, not a minimum-test pass.

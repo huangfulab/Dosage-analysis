@@ -64,6 +64,10 @@ input_file <- options[["input"]]
 dose_col <- options[["dose-col"]]
 response_cols <- strsplit(options[["response-cols"]], ",", fixed = TRUE)[[1L]]
 response_cols <- response_cols[nzchar(response_cols)]
+response_stems = vapply(response_cols, safe_file_stem, character(1))
+if (anyDuplicated(response_cols) || anyDuplicated(tolower(response_stems))) {
+  stop("Response column names must have unique output filename stems.", call.=F)
+}
 output_directory <- options[["output-dir"]]
 group_col <- option_or(options, "group-col")
 control_label <- option_or(options, "control-label")
@@ -95,7 +99,9 @@ overwrite <- parse_cli_boolean(option_or(options, "overwrite", "false"), "overwr
 if (!file.exists(input_file)) {
   stop(sprintf("Input file does not exist: %s", input_file), call. = FALSE)
 }
-ensure_output_directory(output_directory, overwrite = overwrite)
+ensure_output_directory(output_directory, overwrite=overwrite,
+  protected_paths=c(input_file, script_path,
+    file.path(repository_directory, "R", c("cli_helpers.R", "dosage_models.R"))))
 
 raw_data <- utils::read.csv(
   input_file,
@@ -315,7 +321,8 @@ utils::write.table(
   file.path(output_directory, "run_manifest.tsv"),
   sep = "\t",
   row.names = FALSE,
-  quote = FALSE
+  quote = T,
+  qmethod = "double"
 )
 session_report <- write_base_session_info(file.path(output_directory, "session_info.txt"))
 # Preserve nested inputs, settings, source fingerprints, and an inventory of

@@ -4,6 +4,7 @@
 
 # Local coding-agent runtime artifacts and configuration (not for publication)
 /.pi-subagents/
+/.pi/
 /.agents/
 
 # Generated synthetic fixtures and private/local study inputs.
@@ -69,3 +70,5 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+# CocoIndex Code (ccc)
+/.cocoindex_code/

@@ -5,6 +5,9 @@
 
 options(stringsAsFactors=F)
 if (!requireNamespace("devtools", quietly=T)) stop("devtools is required for session information", call.=F)
+# Old sessioninfo versions cannot format an empty non-base attached-package
+# list. Attach the reporting dependency explicitly before the final report.
+suppressPackageStartupMessages(library(devtools))
 
 script_dir = function() {
   file_arg = grep("^--file=", commandArgs(trailingOnly=F), value=T)
@@ -54,7 +57,8 @@ if (!not_empty || !same_dimensions || !annotation_columns_present) {
 
   csv_expression_columns = setdiff(names(csv_data), annotation_columns)
   tsv_expression_columns = setdiff(names(tsv_data), annotation_columns)
-  same_expression_column_count = length(csv_expression_columns) == length(tsv_expression_columns)
+  same_expression_column_count = length(csv_expression_columns) > 0L &&
+    length(csv_expression_columns) == length(tsv_expression_columns)
 
   if (!same_expression_column_count) {
     same_expression_exact = F
@@ -86,7 +90,7 @@ header_map = data.frame(
     names(tsv_data)[seq_len(min(NCOL(csv_data), NCOL(tsv_data)))],
   stringsAsFactors=F
 )
-write.csv(header_map, file.path(output_dir, "expression-header-map.csv"), row.names=F, quote=F)
+write.csv(header_map, file.path(output_dir, "expression-header-map.csv"), row.names=F, quote=T)
 
 different_header_count = sum(!header_map$header_identical)
 practically_equal = same_dimensions && annotation_columns_present &&

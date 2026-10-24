@@ -21,6 +21,8 @@ finite_summary = function(values, summary_function) {
   summary_function(values)
 }
 
+# Keep staging cleanup in a real function scope, including publication errors.
+main = function() {
 alpha = suppressWarnings(as.numeric(Sys.getenv("K2LLPS_ALPHA", unset="0.05")))
 if (!is.finite(alpha) || alpha <= 0 || alpha >= 1) {
   stop_with("K2LLPS_ALPHA must be a number strictly between 0 and 1")
@@ -37,15 +39,24 @@ if (!requireNamespace("devtools", quietly=T)) {
   stop_with("devtools is required to capture the session information but is not installed")
 }
 
-pooled_output_dir = normalizePath(pooled_output_dir, mustWork=T)
-guide_output_dir = normalizePath(guide_output_dir, mustWork=F)
-# Publishing replaces guide_output_dir; never allow it to contain the pooled
-# source, including aliases resolved through symlinks or relative path segments.
-if (identical(pooled_output_dir, guide_output_dir) ||
-    identical(guide_output_dir, .Platform$file.sep) ||
-    startsWith(pooled_output_dir, paste0(guide_output_dir, .Platform$file.sep))) {
-  stop_with("Guide-specific outputs must not replace or contain the pooled output directory")
+pooled_output_dir = normalizePath(pooled_output_dir, winslash="/", mustWork=T)
+source_directory = normalizePath(project_dir, winslash="/", mustWork=T)
+assert_safe_guide_directory = function(path) {
+  path = normalizePath(path, winslash="/", mustWork=F)
+  # Publishing replaces this directory; never allow it to contain the source.
+  protected = c(pooled_output_dir, source_directory)
+  if (any(protected == path | startsWith(protected, paste0(sub("/$", "", path), "/"))) ||
+      grepl("^([A-Za-z]:)?/$", path) || grepl("^//[^/]+/[^/]+/?$", path)) {
+    stop_with("Guide-specific outputs must not replace or contain the pooled output directory or study source directory")
+  }
+  path
 }
+guide_output_dir = assert_safe_guide_directory(guide_output_dir)
+# normalizePath cannot resolve nonexistent components (e.g. new/../outputs).
+# Once the parent exists, canonicalize it and recheck before doing any fitting.
+dir.create(dirname(guide_output_dir), recursive=T, showWarnings=F)
+guide_parent = normalizePath(dirname(guide_output_dir), winslash="/", mustWork=T)
+guide_output_dir = assert_safe_guide_directory(file.path(guide_parent, basename(guide_output_dir)))
 
 pooled_files = c(
   "analysis-sample-metadata.csv",
@@ -287,8 +298,8 @@ for (guide_index in seq_along(target_guides)) {
 
   complete_name = sprintf("de-results-%s-vs-pooled-controls-complete.csv", target_guide)
   significant_name = sprintf("de-results-%s-vs-pooled-controls-significant.csv", target_guide)
-  write.csv(result_table, file.path(staging_dir, complete_name), row.names=F, quote=F, na="NA")
-  write.csv(significant_table, file.path(staging_dir, significant_name), row.names=F, quote=F, na="NA")
+  write.csv(result_table, file.path(staging_dir, complete_name), row.names=F, quote=T, na="NA")
+  write.csv(significant_table, file.path(staging_dir, significant_name), row.names=F, quote=T, na="NA")
 
   result_tables[[target_guide]] = result_table
   contrast_summary_parts[[target_guide]] = data.frame(
@@ -390,8 +401,8 @@ concordance_order = order(
 )
 concordance = concordance[concordance_order, , drop=F]
 rownames(concordance) = NULL
-write.csv(concordance, file.path(staging_dir, "concordance-across-guides.csv"), row.names=F, quote=F, na="NA")
-write.csv(source_manifest, file.path(staging_dir, "pooled-source-md5.csv"), row.names=F, quote=F, na="NA")
+write.csv(concordance, file.path(staging_dir, "concordance-across-guides.csv"), row.names=F, quote=T, na="NA")
+write.csv(source_manifest, file.path(staging_dir, "pooled-source-md5.csv"), row.names=F, quote=T, na="NA")
 
 writeLines(capture.output(devtools::session_info(pkgs="attached")), file.path(staging_dir, "sessionInfo.txt"))
 summary_lines = c(
@@ -463,6 +474,7 @@ empty_staged_files = expected_guide_files[file.info(staged_paths)$size <= 0]
 assert_true(length(empty_staged_files) == 0L, "Empty staged guide-specific file(s): %s", paste(empty_staged_files, collapse=", "))
 assert_manifest_unchanged(pooled_manifest(), source_manifest, "while generating guide-specific outputs")
 
+guide_output_dir = assert_safe_guide_directory(guide_output_dir)
 backup_dir = NULL
 if (dir.exists(guide_output_dir)) {
   backup_dir = paste0(guide_output_dir, ".backup-", Sys.getpid())
@@ -493,3 +505,7 @@ for (guide_index in seq_len(NROW(contrast_summary))) {
 }
 message(sprintf("Consistent across multiple guides: %d genes", sum(concordance$consistent_across_multiple_guides)))
 message("Guide-specific outputs: ", guide_output_dir)
+}
+
+main()
+devtools::session_info(pkgs="attached")

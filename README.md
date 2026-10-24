@@ -221,7 +221,7 @@ review them for private information before sharing.
 
 ## Validation and statistical interpretation
 
-Run the six model/CLI test suites from the repository root:
+Run the seven model/runtime-state/CLI test suites from the repository root:
 
 ```bash
 make test

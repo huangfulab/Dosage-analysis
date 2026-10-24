@@ -93,7 +93,9 @@ if (!file.exists(input_file)) {
 if (!is.null(deg_file) && !file.exists(deg_file)) {
   stop(sprintf("DEG file does not exist: %s", deg_file), call. = F)
 }
-ensure_output_directory(output_directory, overwrite = overwrite)
+ensure_output_directory(output_directory, overwrite=overwrite,
+  protected_paths=c(input_file, deg_file, script_path,
+    file.path(repository_directory, "R", c("cli_helpers.R", "qpcr_bulk_rna_models.R"))))
 
 message("Reading long-form sample-by-gene qPCR and bulk RNA-seq data...")
 long_data = utils::read.csv(input_file, stringsAsFactors = F, check.names = F)
@@ -277,7 +279,8 @@ utils::write.table(
   file.path(output_directory, "run_manifest.tsv"),
   sep = "\t",
   row.names = F,
-  quote = F
+  quote = T,
+  qmethod = "double"
 )
 session_report = write_base_session_info(file.path(output_directory, "session_info.txt"))
 # Preserve nested inputs, settings, source fingerprints, and an inventory of

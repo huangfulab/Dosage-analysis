@@ -68,7 +68,7 @@ jobs:
             libcurl4-openssl-dev libssl-dev libxml2-dev libgit2-dev \
             libfontconfig1-dev libfreetype6-dev libharfbuzz-dev libfribidi-dev \
             libpng-dev libtiff5-dev libjpeg-dev libhdf5-dev libglpk-dev \
-            libgmp3-dev libmpfr-dev libudunits2-dev libnlopt-dev libicu-dev
+            libgmp3-dev libmpfr-dev libudunits2-dev libnlopt-dev libicu-dev libmagick++-dev
       - name: Isolate the R library and validate CI metadata
         run: |
           mkdir -p "$CI_R_LIBRARY" "$CI_LOG_DIR"
@@ -80,7 +80,7 @@ jobs:
         run: |
           Rscript ci/dependencies.R --verify 2>&1 | tee "$CI_LOG_DIR/dependency-verification.log"
           Rscript tests/test_ci_dependencies.R 2>&1 | tee "$CI_LOG_DIR/ci-utilities.log"
-      - name: Test the six generic model and CLI suites
+      - name: Test the seven generic model, runtime-state, and CLI suites
         run: make test 2>&1 | tee "$CI_LOG_DIR/generic-tests.log"
       - name: Test GSVA API compatibility and native scoring
         run: Rscript tests/test_gsva_compat.R 2>&1 | tee "$CI_LOG_DIR/gsva-compatibility.log"

@@ -113,13 +113,12 @@
   residuals <- observed - fitted
   n <- length(observed)
   rss <- sum(residuals^2)
-  # Floor only the likelihood RSS so a perfect numerical fit remains defined.
-  rss_for_likelihood <- max(
-    rss,
-    .Machine$double.eps * max(1, sum(observed^2))
-  )
-  sigma2_mle <- rss_for_likelihood / n
-  log_likelihood <- -0.5 * n * (log(2 * pi) + 1 + log(sigma2_mle))
+  # Preserve every positive RSS: an uncentered response-scale floor can make
+  # arbitrary offsets change AIC rankings. Work in log space to avoid variance
+  # underflow; only an exactly zero RSS needs a finite numerical fallback.
+  log_sigma2_mle = if (rss > 0) log(rss) - log(n) else
+    log(.Machine$double.xmin) + log(.Machine$double.eps) - log(2) - log(n)
+  log_likelihood <- -0.5 * n * (log(2 * pi) + 1 + log_sigma2_mle)
   total_parameters <- mean_parameters + 1 # Includes residual variance.
   aic <- -2 * log_likelihood + 2 * total_parameters
   aicc <- if (n > total_parameters + 1) {
@@ -290,10 +289,14 @@ runmodelsaic_poly <- function(
   # than the orthogonal-polynomial basis used by R's default `poly()`.
   for (degree in degrees) {
     model_name <- sprintf("polynomial_degree_%d", degree)
-    fit <- stats::lm(
-      .response ~ stats::poly(.dose, degree = degree, raw = TRUE),
-      data = model_data
-    )
+    # Retained formulas must not refer to the mutable loop variable: predict()
+    # and RDS consumers evaluate the formula again after the loop has ended.
+    fit_formula = stats::as.formula(sprintf(
+      ".response ~ stats::poly(.dose, degree=%d, raw=TRUE)", degree))
+    fit <- stats::lm(fit_formula, data=model_data)
+    if (fit$rank != degree + 1L) {
+      stop("Polynomial design is rank deficient; center or rescale the dose values.", call.=F)
+    }
     models[[model_name]] <- fit
     fitted_values <- stats::fitted(fit)
     fit_stats <- .gaussian_fit_statistics(
@@ -456,7 +459,7 @@ runmodelsaic_drc <- function(
     sink_file <- NULL
     sink_connection <- NULL
     output_sink_depth <- sink.number(type = "output")
-    message_sink_depth <- sink.number(type = "message")
+    message_sink_connection = getConnection(sink.number(type="message"))
     graphics_devices_before <- grDevices::dev.list()
     on.exit({
       graphics_devices_after <- grDevices::dev.list()
@@ -468,9 +471,7 @@ runmodelsaic_drc <- function(
         try(grDevices::dev.off(which = device), silent = TRUE)
       }
       try({
-        while (sink.number(type = "message") > message_sink_depth) {
-          sink(type = "message")
-        }
+        sink(message_sink_connection, type="message")
       }, silent = TRUE)
       try({
         while (sink.number(type = "output") > output_sink_depth) {
@@ -507,7 +508,7 @@ runmodelsaic_drc <- function(
     )
     # Unsink before reading so all output is flushed to disk. Cleanup remains
     # registered for errors in this finalization step.
-    while (sink.number(type = "message") > message_sink_depth) sink(type = "message")
+    sink(message_sink_connection, type="message")
     while (sink.number(type = "output") > output_sink_depth) sink(type = "output")
     if (inherits(sink_connection, "connection")) close(sink_connection)
     sink_connection <- NULL
@@ -710,7 +711,7 @@ runmodelsaic_spline <- function(
   # `df` is a smoothing target; the achieved effective df is used as the
   # mean-parameter count for the approximate spline information criteria.
   for (requested_df in df) {
-    model_name <- paste0("spline_df_", format(requested_df, trim = TRUE))
+    model_name <- paste0("spline_df_", format(requested_df, trim=TRUE, digits=17L, decimal.mark="."))
     warning_message <- ""
     fit <- withCallingHandlers(
       stats::smooth.spline(
@@ -796,6 +797,21 @@ runmodelsaic_spline <- function(
   )
 }
 
+.assert_same_dosage_inputs = function(fits, dose_col=fits[[1L]]$dose_col,
+    response_col=fits[[1L]]$response_col, input=fits[[1L]]$input) {
+  # Comparing likelihoods or overlaying curves requires the same endpoint,
+  # retained observations, dose/response values, and observation order.
+  same_input = vapply(fits, function(fit) {
+    identical(fit$dose_col, dose_col) && identical(fit$response_col, response_col) &&
+      isTRUE(all.equal(fit$input[c(".row", ".dose", ".response")],
+        input[c(".row", ".dose", ".response")], tolerance=0, check.attributes=F))
+  }, logical(1))
+  if (!all(same_input)) {
+    stop("Models must use the same response and observations for comparison or plotting.", call.=F)
+  }
+  invisible(T)
+}
+
 #' Combine fitted-model tables and calculate delta AIC and Akaike weights.
 compare_dosage_models <- function(...) {
   fits <- list(...)
@@ -807,6 +823,7 @@ compare_dosage_models <- function(...) {
     stop("Supply one or more `dosage_model_fit` objects.", call. = FALSE)
   }
 
+  .assert_same_dosage_inputs(fits)
   tables <- lapply(fits, `[[`, "model_table")
   result <- .rbind_fill(tables)
   # Weights are conditional on converged finite-AIC fits for this one response,
@@ -835,15 +852,16 @@ plot_dosage_models <- function(
     width = 7,
     height = 5,
     log_dose = FALSE,
-    main = NULL) {
+    main = NULL,
+    na_action = c("fail", "omit")) {
   model_data <- .model_data(
     data,
     dose_col,
     response_col,
     group_col,
-    min_rows = 5L,
+    min_rows = 3L,
     require_positive_dose = isTRUE(log_dose),
-    na_action = "fail"
+    na_action = match.arg(na_action)
   )
   if (inherits(fits, "dosage_model_fit")) {
     fits <- list(fits)
@@ -852,6 +870,7 @@ plot_dosage_models <- function(
       any(!vapply(fits, inherits, logical(1), "dosage_model_fit"))) {
     stop("`fits` must contain one or more `dosage_model_fit` objects.", call. = FALSE)
   }
+  .assert_same_dosage_inputs(fits, dose_col, response_col, model_data)
 
   opened_device <- FALSE
   if (!is.null(file)) {
@@ -1084,6 +1103,7 @@ plot_dosage_model_diagnostics <- function(
     main = NULL) {
   if (inherits(fits, "dosage_model_fit")) fits <- list(fits)
   diagnostics <- diagnose_dosage_models(fits)
+  .assert_same_dosage_inputs(fits)
   models <- unique(as.character(diagnostics$model))
   if (length(models) < 1L) stop("No candidate models are available.", call. = FALSE)
 
@@ -1109,6 +1129,7 @@ plot_dosage_model_diagnostics <- function(
   on.exit({
     if (!is.null(old_par)) {
       graphics::par(old_par)
+      graphics::par(cex=old_par$cex)
     }
     if (device_opened && grDevices::dev.cur() > 1L) grDevices::dev.off()
   }, add = TRUE)

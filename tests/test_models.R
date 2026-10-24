@@ -51,6 +51,33 @@ stopifnot(
   NROW(polynomial$nested_tests) == 1L
 )
 
+# Returned polynomial objects must predict the same curves after the loop and
+# after serialization, rather than reevaluating the final loop degree.
+polynomial_rds = tempfile(fileext=".rds")
+saveRDS(polynomial, polynomial_rds)
+for (retained in list(polynomial, readRDS(polynomial_rds))) {
+  for (model in names(retained$models)) {
+    expected = retained$predictions[retained$predictions$model == model, ]
+    actual = as.numeric(stats::predict(retained$models[[model]],
+      newdata=data.frame(.dose=expected$dose)))
+    stopifnot(isTRUE(all.equal(actual, expected$predicted)))
+  }
+}
+unlink(polynomial_rds)
+# A response offset must not erase a real difference in residual likelihood.
+for (offset in c(0, 1e9)) {
+  offset_fit = suppressWarnings(runmodelsaic_poly(
+    data.frame(dose=1:10, response=offset + (1:10)^2), "dose", "response"))
+  stopifnot(identical(offset_fit$best_model, "polynomial_degree_2"))
+}
+for (offset in c(1e6, 1e9)) {
+  singular = tryCatch(runmodelsaic_poly(
+    data.frame(dose=offset + 1:10, response=(1:10)^2), "dose", "response"), error=identity)
+  stopifnot(inherits(singular, "error"), grepl("rank deficient", conditionMessage(singular), fixed=T))
+}
+exact = .gaussian_fit_statistics(c(0, 1e-160), c(0, 1e-160), 1)
+imperfect = .gaussian_fit_statistics(c(0, 1e-160), c(1e-160, 1e-160), 1)
+stopifnot(is.finite(exact$aic), exact$aic < imperfect$aic)
 high_degree_error <- tryCatch(
   {
     runmodelsaic_poly(
@@ -107,6 +134,40 @@ stopifnot(
   all(is.finite(spline$model_table$aic))
 )
 
+different_response_error = tryCatch(compare_dosage_models(polynomial, hill, spline), error=identity)
+stopifnot(inherits(different_response_error, "error"),
+  grepl("same response and observations", conditionMessage(different_response_error), fixed=T),
+  inherits(tryCatch(plot_dosage_model_diagnostics(list(polynomial, hill)), error=identity), "error"))
+# Positive comparisons/plots must use the same endpoint, unlike the old fixture.
+polynomial = runmodelsaic_poly(prepared$data, "dose", "hill", group_col="group")
+omitted_data = prepared$data
+omitted_data$hill[[1L]] = NA_real_
+omitted_fit = runmodelsaic_poly(omitted_data, "dose", "hill", na_action="omit")
+omitted_error = tryCatch(compare_dosage_models(polynomial, omitted_fit), error=identity)
+stopifnot(inherits(omitted_error, "error"))
+omitted_pdf = tempfile(fileext=".pdf")
+plot_dosage_models(omitted_data, "dose", "hill", omitted_fit, file=omitted_pdf, na_action="omit")
+stopifnot(file.exists(omitted_pdf))
+unlink(omitted_pdf)
+for (degree in 1:2) {
+  small_data = data.frame(dose=seq_len(degree + 2L), response=seq_len(degree + 2L)^2 + rep(c(0.1, -0.2), length.out=degree + 2L))
+  small_fit = runmodelsaic_poly(small_data, "dose", "response", degrees=degree)
+  small_pdf = tempfile(fileext=".pdf")
+  plot_dosage_models(small_data, "dose", "response", small_fit, file=small_pdf)
+  stopifnot(file.exists(small_pdf))
+  unlink(small_pdf)
+}
+stopifnot(inherits(tryCatch(plot_dosage_models(prepared$data, "dose", "hill",
+  list(polynomial, omitted_fit)), error=identity), "error"))
+changed_data = prepared$data
+changed_data$hill[[1L]] = changed_data$hill[[1L]] + 0.1
+changed_fit = runmodelsaic_poly(changed_data, "dose", "hill")
+stopifnot(inherits(tryCatch(compare_dosage_models(polynomial, changed_fit), error=identity), "error"))
+close_df = c(3.00000001, 3.00000002)
+close_spline = runmodelsaic_spline(prepared$data, "dose", "hill", df=close_df)
+stopifnot(length(close_spline$models) == 2L, NROW(close_spline$model_table) == 2L,
+  identical(close_spline$model_table$requested_df, close_df),
+  length(unique(close_spline$predictions$model)) == 2L)
 comparison <- compare_dosage_models(polynomial, hill, spline)
 stopifnot(
   all(diff(comparison$aic) >= 0),
@@ -141,6 +202,18 @@ stopifnot(
   file.exists(diagnostic_plot_file), file.info(diagnostic_plot_file)$size > 0
 )
 unlink(diagnostic_plot_file)
+# Restoring layout can reset cex: verify both owned-device and caller-device paths.
+caller_diagnostics_file = tempfile(fileext=".pdf")
+grDevices::pdf(caller_diagnostics_file)
+graphics::par(cex=1.07)
+par_names = c("mfrow", "mar", "oma", "cex")
+caller_par = graphics::par(par_names)
+plot_dosage_model_diagnostics(polynomial, file=NULL)
+stopifnot(isTRUE(all.equal(caller_par, graphics::par(par_names))))
+plot_dosage_model_diagnostics(polynomial, file=diagnostic_plot_file)
+stopifnot(isTRUE(all.equal(caller_par, graphics::par(par_names))))
+grDevices::dev.off()
+unlink(c(caller_diagnostics_file, diagnostic_plot_file))
 
 plot_file <- tempfile(fileext = ".pdf")
 plot_result <- plot_dosage_models(

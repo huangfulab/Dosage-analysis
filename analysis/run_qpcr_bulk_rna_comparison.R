@@ -71,7 +71,9 @@ overwrite = parse_cli_boolean(option_or(options, "overwrite", "false"), "overwri
 if (!file.exists(input_file)) {
   stop(sprintf("Input file does not exist: %s", input_file), call. = F)
 }
-ensure_output_directory(output_directory, overwrite = overwrite)
+ensure_output_directory(output_directory, overwrite=overwrite,
+  protected_paths=c(input_file, script_path,
+    file.path(repository_directory, "R", c("cli_helpers.R", "qpcr_bulk_rna_models.R"))))
 
 message("Reading sample-level qPCR and bulk RNA-seq values...")
 sample_data = utils::read.csv(input_file, stringsAsFactors = F, check.names = F)
@@ -217,7 +219,8 @@ utils::write.table(
   file.path(output_directory, "run_manifest.tsv"),
   sep = "\t",
   row.names = F,
-  quote = F
+  quote = T,
+  qmethod = "double"
 )
 session_report = write_base_session_info(file.path(output_directory, "session_info.txt"))
 # Preserve nested inputs, settings, source fingerprints, and an inventory of

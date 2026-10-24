@@ -171,7 +171,7 @@ map_symbol = function(symbol) {
       check.names=F
     ))
   }
-  coding_hits = hits[hits$gene_biotype == "protein_coding", , drop=F]
+  coding_hits = hits[!is.na(hits$gene_biotype) & hits$gene_biotype == "protein_coding", , drop=F]
   chosen = if (NROW(coding_hits) > 0L) coding_hits else hits
   chosen = chosen[order(-chosen$baseMean, chosen$gene_id), , drop=F]
   data.frame(
@@ -401,7 +401,7 @@ write.csv(
   gene_set_map,
   file.path(output_dir, "gsva-neuroectoderm-gene-set.csv"),
   row.names=F,
-  quote=F,
+  quote=T,
   na="NA"
 )
 provenance_lines = c(
@@ -426,7 +426,7 @@ write.csv(
   sample_scores,
   file.path(output_dir, "gsva-neuroectoderm-sample-scores.csv"),
   row.names=F,
-  quote=F,
+  quote=T,
   na="NA"
 )
 

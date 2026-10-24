@@ -8,12 +8,37 @@ expect_error = function(expression, text) {
 for (minor in 0:6) {
   plan = minimum_plan(paste0("4.", minor))
   stopifnot(NROW(plan$packages) == 9L, !anyDuplicated(plan$packages$package))
-  installed = cbind(Package=plan$packages$package, Version=plan$packages$version)
+  wanted = rbind(plan$compatibility_packages, plan$packages)
+  if (minor == 0L) {
+    stopifnot(identical(plan$compatibility_packages$package, "locfit"),
+      identical(plan$compatibility_packages$version, "1.5-9.4"))
+  } else stopifnot(NROW(plan$compatibility_packages) == 0L)
+  installed = cbind(Package=wanted$package, Version=wanted$version)
   verify_dependency_versions(plan, installed=installed, load=F)
   installed[1L, "Version"] = "99.0.0"
   expect_error(verify_dependency_versions(plan, installed=installed, load=F), "not silently upgrade")
   expect_error(verify_dependency_versions(plan, installed=installed[-1L, ], load=F), "Missing minimum dependencies")
 }
+for (series in c("4.4", "4.5", "4.6")) {
+  plan = minimum_plan(series)
+  stopifnot(plan$packages$version[plan$packages$package == "ggplot2"] == "3.4.3")
+  if (series != "4.4") stopifnot(plan$packages$version[plan$packages$package == "matrixStats"] == "1.5.0")
+}
+# A current source release may have no Archive entry; fallback must preserve
+# the exact version and must discard failed/partial downloads.
+urls = exact_source_urls("matrixStats", "1.5.0", "CRAN", "unused")
+stopifnot(length(urls) == 2L, all(grepl("matrixStats_1.5.0.tar.gz", urls, fixed=T)))
+archive = tempfile()
+selected = download_exact_source(urls, archive, download=function(url, destination, mode) {
+  writeLines("partial", destination)
+  if (identical(url, urls[[1L]])) stop("404")
+  writeLines("exact source", destination)
+  0L
+})
+stopifnot(identical(selected, urls[[2L]]), identical(readLines(archive), "exact source"))
+expect_error(download_exact_source(urls, archive,
+  download=function(...) 1L), "Could not download exact package source")
+stopifnot(!file.exists(archive))
 expect_error(minimum_plan("4.7"), "NROW(row) == 1L")
 installed = cbind(
   Package=c("one", "two"), Version=c("1.0", "2.0"),
@@ -37,4 +62,4 @@ check_install_guard = function() {
 }
 check_install_guard()
 message("CI baseline, exact-version, dependency-constraint, and no-local-install tests passed.")
-devtools::session_info(pkgs="attached")
+sessionInfo()
