@@ -56,13 +56,10 @@ stopifnot(identical(selected, urls[[1L]]), calls == length(urls) + 1L, pauses ==
   identical(readLines(archive), "exact source"))
 previous_method = getOption("download.file.method")
 previous_extra = getOption("download.file.extra")
-downloads = configure_ci_downloads()
-stopifnot(downloads$method %in% c("curl", "libcurl"),
-  identical(getOption("download.file.method"), downloads$method))
-if (identical(downloads$method, "curl")) {
-  stopifnot(grepl("--retry 5", downloads$extra, fixed=TRUE),
-    grepl("--retry-all-errors", downloads$extra, fixed=TRUE))
-}
+options(download.file.method="curl", download.file.extra="--retry 5")
+stopifnot(identical(use_ci_libcurl_downloads(), "libcurl"),
+  identical(getOption("download.file.method"), "libcurl"),
+  is.null(getOption("download.file.extra")))
 options(download.file.method=previous_method, download.file.extra=previous_extra)
 expect_error(minimum_plan("4.7"), "NROW(row) == 1L")
 installed = cbind(

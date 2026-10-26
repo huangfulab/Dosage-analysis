@@ -95,13 +95,12 @@ ci_retry_pause = function(attempt) {
   invisible(attempt)
 }
 
-# libcurl inside download.file does not honour curl's --retry flags.
-# The external curl binary does, including the SSL connect errors seen in CI.
-configure_ci_downloads = function() {
-  method = if (nzchar(Sys.which("curl"))) "curl" else "libcurl"
-  extra = if (identical(method, "curl")) "--retry 5 --retry-connrefused --retry-delay 2 --retry-all-errors" else ""
-  options(download.file.method=method, download.file.extra=extra)
-  invisible(list(method=method, extra=extra))
+# R's libcurl follows Posit Package Manager redirects. The external curl
+# method saved each redirect body as a 151-byte file, and untar then failed
+# for every dependency on every R series.
+use_ci_libcurl_downloads = function() {
+  options(download.file.method="libcurl", download.file.extra=NULL)
+  invisible("libcurl")
 }
 
 # A still-current CRAN release has no Archive entry. Try both locations for
@@ -170,7 +169,7 @@ install_minimum_dependencies = function(plan) {
   repositories = c(BioCsoft=paste0(bioc, "/bioc"), BioCann=paste0(bioc, "/data/annotation"),
     BioCexp=paste0(bioc, "/data/experiment"), CRAN=cran)
   options(repos=repositories, timeout=600, Ncpus=2L, pkgType="source")
-  configure_ci_downloads()
+  use_ci_libcurl_downloads()
   log_dir = Sys.getenv("CI_LOG_DIR", unset=tempdir())
   dir.create(log_dir, recursive=T, showWarnings=F)
   on.exit(write_ci_environment(log_dir), add=T)
