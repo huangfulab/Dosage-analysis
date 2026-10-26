@@ -91,6 +91,11 @@ versions. All actually installed versions, repositories, R session details,
 and test logs are uploaded as CI artifacts even when a job fails. This is not
 a complete transitive lockfile or a manuscript reproduction environment.
 
+Source downloads use the system `curl` binary, which retries transient SSL and
+connection failures. A direct package whose exact version is absent afterward
+is installed again. One failed download is not treated as a missing baseline
+package.
+
 Installation occurs only with `Rscript ci/dependencies.R --install` inside a
 disposable GitHub Actions library. Local `--plan` is read-only; the ordinary
 analysis runners and tests never install packages. There is no cross-job
