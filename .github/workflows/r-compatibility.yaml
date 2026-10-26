@@ -20,7 +20,7 @@ on:
           - "4.5"
           - "4.6"
   schedule:
-    - cron: '23 5 * * 1'
+    - cron: '24 5 * * 1'
 
 permissions:
   contents: read
