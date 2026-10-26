@@ -83,7 +83,11 @@ write_ci_environment = function(log_dir) {
 
 exact_source_urls = function(package, version, source, bioc) {
   if (source == "Bioconductor") {
-    return(sprintf("%s/bioc/src/contrib/%s_%s.tar.gz", bioc, package, version))
+    # A pinned source may move to Archive; keep the same exact version.
+    return(c(
+      sprintf("%s/bioc/src/contrib/%s_%s.tar.gz", bioc, package, version),
+      sprintf("%s/bioc/src/contrib/Archive/%s/%s_%s.tar.gz", bioc, package, package, version)
+    ))
   }
   c(sprintf("https://cran.r-project.org/src/contrib/Archive/%s/%s_%s.tar.gz", package, package, version),
     sprintf("https://cran.r-project.org/src/contrib/%s_%s.tar.gz", package, version))
