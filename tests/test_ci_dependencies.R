@@ -39,9 +39,31 @@ selected = download_exact_source(urls, archive, download=function(url, destinati
   0L
 })
 stopifnot(identical(selected, urls[[2L]]), identical(readLines(archive), "exact source"))
+no_pause = function(attempt) NULL
 expect_error(download_exact_source(urls, archive,
-  download=function(...) 1L), "Could not download exact package source")
+  download=function(...) 1L, pause=no_pause), "Could not download exact package source")
 stopifnot(!file.exists(archive))
+# A connect error on every URL is retried; the next attempt can succeed.
+calls = 0L
+pauses = 0L
+selected = download_exact_source(urls, archive, download=function(url, destination, mode) {
+  calls <<- calls + 1L
+  if (calls <= length(urls)) stop("SSL connect error")
+  writeLines("exact source", destination)
+  0L
+}, pause=function(attempt) { pauses <<- pauses + 1L })
+stopifnot(identical(selected, urls[[1L]]), calls == length(urls) + 1L, pauses == 1L,
+  identical(readLines(archive), "exact source"))
+previous_method = getOption("download.file.method")
+previous_extra = getOption("download.file.extra")
+downloads = configure_ci_downloads()
+stopifnot(downloads$method %in% c("curl", "libcurl"),
+  identical(getOption("download.file.method"), downloads$method))
+if (identical(downloads$method, "curl")) {
+  stopifnot(grepl("--retry 5", downloads$extra, fixed=TRUE),
+    grepl("--retry-all-errors", downloads$extra, fixed=TRUE))
+}
+options(download.file.method=previous_method, download.file.extra=previous_extra)
 expect_error(minimum_plan("4.7"), "NROW(row) == 1L")
 installed = cbind(
   Package=c("one", "two"), Version=c("1.0", "2.0"),

@@ -89,23 +89,72 @@ exact_source_urls = function(package, version, source, bioc) {
     sprintf("https://cran.r-project.org/src/contrib/%s_%s.tar.gz", package, version))
 }
 
+# Pause only on GitHub Actions. Unit tests inject pause=function(attempt) NULL.
+ci_retry_pause = function(attempt) {
+  if (identical(Sys.getenv("GITHUB_ACTIONS"), "true")) Sys.sleep(min(2^(attempt - 1L), 30))
+  invisible(attempt)
+}
+
+# libcurl inside download.file does not honour curl's --retry flags.
+# The external curl binary does, including the SSL connect errors seen in CI.
+configure_ci_downloads = function() {
+  method = if (nzchar(Sys.which("curl"))) "curl" else "libcurl"
+  extra = if (identical(method, "curl")) "--retry 5 --retry-connrefused --retry-delay 2 --retry-all-errors" else ""
+  options(download.file.method=method, download.file.extra=extra)
+  invisible(list(method=method, extra=extra))
+}
+
 # A still-current CRAN release has no Archive entry. Try both locations for
 # the SAME exact version; never interpret a missing archive as permission to
 # upgrade the floor. The injected downloader permits offline fallback tests.
-download_exact_source = function(urls, destination, download=utils::download.file) {
-  for (url in urls) {
-    unlink(destination)
-    downloaded = tryCatch({
-      status = suppressWarnings(download(url, destination, mode="wb"))
-      isTRUE(status == 0L) && file.exists(destination) && file.info(destination)$size > 0
-    }, error=function(error) {
-      message("Source unavailable: ", url, "; ", conditionMessage(error))
-      F
-    })
-    if (isTRUE(downloaded)) return(invisible(url))
+download_exact_source = function(urls, destination, download=utils::download.file, attempts=5L, pause=ci_retry_pause) {
+  for (attempt in seq_len(attempts)) {
+    for (url in urls) {
+      unlink(destination)
+      downloaded = tryCatch({
+        status = suppressWarnings(download(url, destination, mode="wb"))
+        ok = isTRUE(status == 0L) && file.exists(destination) && isTRUE(file.info(destination)$size > 0)
+        if (!isTRUE(ok)) message("Source unavailable: ", url, "; download status ", paste(status))
+        ok
+      }, error=function(error) {
+        message("Source unavailable: ", url, "; ", conditionMessage(error))
+        FALSE
+      })
+      if (isTRUE(downloaded)) return(invisible(url))
+    }
+    if (attempt < attempts) pause(attempt)
   }
   unlink(destination)
   stop("Could not download exact package source: ", paste(urls, collapse=", "))
+}
+
+exact_version_installed = function(package, version, library) {
+  installed = utils::installed.packages(lib.loc=library, noCache=TRUE)
+  index = match(package, installed[, "Package"])
+  if (is.na(index)) return(FALSE)
+  package_version(installed[index, "Version"]) == package_version(version)
+}
+
+# remotes::install_local can return after a dependency download failure
+# without leaving the requested package installed. Retry that package only.
+install_exact_source = function(package, version, urls, source_archive, library, repositories,
+    attempts=3L, pause=ci_retry_pause) {
+  for (attempt in seq_len(attempts)) {
+    source_url = download_exact_source(urls, source_archive)
+    message("Installing assumed minimum: ", package, " ", version, " from ", source_url,
+      " (attempt ", attempt, " of ", attempts, ")")
+    install_error = tryCatch({
+      remotes::install_local(source_archive, lib=library, dependencies=NA, upgrade="never",
+        build_vignettes=F, repos=repositories, quiet=F)
+      NULL
+    }, error=function(error) error)
+    unlink(source_archive)
+    if (isTRUE(exact_version_installed(package, version, library))) return(invisible(source_url))
+    detail = if (is.null(install_error)) "installer returned without the required version" else conditionMessage(install_error)
+    message("Attempt ", attempt, " did not install ", package, " ", version, ": ", detail)
+    if (attempt < attempts) pause(attempt)
+  }
+  stop("Failed to install ", package, " ", version, " after ", attempts, " attempts")
 }
 
 install_minimum_dependencies = function(plan) {
@@ -121,6 +170,7 @@ install_minimum_dependencies = function(plan) {
   repositories = c(BioCsoft=paste0(bioc, "/bioc"), BioCann=paste0(bioc, "/data/annotation"),
     BioCexp=paste0(bioc, "/data/experiment"), CRAN=cran)
   options(repos=repositories, timeout=600, Ncpus=2L, pkgType="source")
+  configure_ci_downloads()
   log_dir = Sys.getenv("CI_LOG_DIR", unset=tempdir())
   dir.create(log_dir, recursive=T, showWarnings=F)
   on.exit(write_ci_environment(log_dir), add=T)
@@ -133,7 +183,7 @@ install_minimum_dependencies = function(plan) {
   # packages. Archived direct dependencies are installed from exact sources.
   bootstrap = tempfile(fileext=".tar.gz")
   on.exit(unlink(bootstrap), add=T)
-  utils::download.file("https://cran.r-project.org/src/contrib/Archive/remotes/remotes_2.4.2.tar.gz", bootstrap, mode="wb")
+  download_exact_source("https://cran.r-project.org/src/contrib/Archive/remotes/remotes_2.4.2.tar.gz", bootstrap)
   utils::install.packages(bootstrap, repos=NULL, type="source", lib=library)
   if (!requireNamespace("remotes", quietly=T)) stop("Could not bootstrap remotes")
   # Compatibility pins must precede direct packages so dependency resolution
@@ -143,11 +193,7 @@ install_minimum_dependencies = function(plan) {
   for (i in seq_len(NROW(packages))) {
     package = packages[i, ]
     urls = exact_source_urls(package$package, package$version, package$source, bioc)
-    source_url = download_exact_source(urls, source_archive)
-    message("Installing assumed minimum: ", package$package, " ", package$version, " from ", source_url)
-    remotes::install_local(source_archive, lib=library, dependencies=NA, upgrade="never",
-      build_vignettes=F, repos=repositories, quiet=F)
-    unlink(source_archive)
+    install_exact_source(package$package, package$version, urls, source_archive, library, repositories)
   }
   # Dependencies installed for a later direct package may have replaced an
   # earlier pin. Any such replacement is a failure, not a minimum-test pass.
