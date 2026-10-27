@@ -7,9 +7,12 @@ it is not an installable R package.
 
 **Study data are not included.** Generated examples are synthetic software
 fixtures, not experimental results or evidence for a biological mechanism.
-The repository is not yet a complete manuscript reproduction archive: study-data
-accessions, preprocessing, figure-to-command mappings, a locked environment,
-and a versioned archive DOI remain to be finalized.
+Public source releases are archived on Zenodo (see [Citation and archived
+releases](#citation-and-archived-releases)). Code preservation is complete for
+those releases; this repository is not yet a complete manuscript reproduction
+archive. The exact manuscript execution commit, a complete input inventory,
+preprocessing, figure-to-command mappings, and a locked environment remain to
+be verified or documented.
 
 ## Workflows
 
@@ -265,14 +268,44 @@ Read [`METHODS.md`](METHODS.md) before interpreting AIC or fitted curves:
 - [`QPCR_BULK_RNA_WORKFLOW.md`](QPCR_BULK_RNA_WORKFLOW.md): detailed qPCR workflow.
 - [`REPRODUCIBILITY_CHECKLIST.md`](REPRODUCIBILITY_CHECKLIST.md): remaining manuscript
   reproduction and preservation requirements.
-- [`CODE_AVAILABILITY.md`](CODE_AVAILABILITY.md): availability-statement template;
-  placeholders must be completed before submission.
+- [`CODE_AVAILABILITY.md`](CODE_AVAILABILITY.md): verified code/data availability,
+  release provenance, and unresolved manuscript reproduction details.
 
-A final release should connect the exact source commit, approved inputs or
-accessions, environment specification, execution commands, reference outputs,
-and validation report. A Zenodo archive/DOI is not supplied by this README.
-Once a release is archived, cite its **version-specific DOI** for the analysis
-used in a manuscript; citation/authorship metadata remain to be finalized.
+## Citation and archived releases
+
+Both public releases were published on 2026-10-24 and belong to the same
+Zenodo version family:
+
+| Release | Version-specific DOI | Tagged source commit |
+| --- | --- | --- |
+| [v1.0.0](https://github.com/huangfulab/Dosage-analysis/releases/tag/v1.0.0) | [10.5281/zenodo.23620777](https://doi.org/10.5281/zenodo.23620777) | `910af968793259a679718fc1c89177a0b38d4bfb` |
+| [v1.0.1](https://github.com/huangfulab/Dosage-analysis/releases/tag/v1.0.1) | [10.5281/zenodo.23622499](https://doi.org/10.5281/zenodo.23622499) | `b53bd385c78c94c0152511e5ea3848c80a00fd57` |
+
+The concept DOI [10.5281/zenodo.23620776](https://doi.org/10.5281/zenodo.23620776)
+identifies the version family, not a fixed analysis snapshot. Use a
+version-specific DOI when citing code used in an analysis.
+
+[`CITATION.cff`](CITATION.cff) describes archived software release **v1.0.1**:
+Cho, Hyein S. (2026). *Dosage-analysis* (1.0.1). Zenodo.
+https://doi.org/10.5281/zenodo.23622499. It does not identify the current `main`
+branch or establish which commit generated the manuscript results.
+
+The [v1.0.0-to-v1.0.1 diff](https://github.com/huangfulab/Dosage-analysis/compare/v1.0.0...v1.0.1)
+changes CI configuration/tests and documentation; all analysis scripts are
+identical between these two archives. Use **v1.0.1**, DOI
+**10.5281/zenodo.23622499**, as the public code archive shared with the
+manuscript. The v1.0.0 DOI remains a historical reference to the initial public
+release. Calling either release the exact code used for manuscript figures
+requires matching the original run records and outputs
+to its source commit. The original study import commit is provenance, not that
+confirmation. Later changes on `main`, including this citation documentation,
+are not part of either existing Zenodo archive.
+
+Public study data include GEO [GSE349847](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE349847)
+(44 neuroectoderm bulk RNA-seq samples and the K2LLPS expression matrix), under
+SuperSeries [GSE349851](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE349851).
+These accessions do not establish availability of every workflow input; see
+[`CODE_AVAILABILITY.md`](CODE_AVAILABILITY.md) for the remaining verification.
 
 ## License
 

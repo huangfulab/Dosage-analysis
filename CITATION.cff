@@ -1,8 +1,9 @@
 cff-version: 1.2.0
 type: software
 message: >-
-  If you use this software, please cite the version used
-  in your analysis using its version-specific DOI.
+  This metadata describes archived software release v1.0.1.
+  Cite the version actually used in your analysis using its version-specific DOI.
+  This citation does not establish the manuscript analysis commit.
 title: "Dosage-analysis"
 authors:
   - family-names: "Cho"
@@ -10,6 +11,7 @@ authors:
 version: "1.0.1"
 date-released: "2026-10-24"
 doi: "10.5281/zenodo.23622499"
+commit: "b53bd385c78c94c0152511e5ea3848c80a00fd57"
 url: "https://github.com/huangfulab/Dosage-analysis"
 repository-code: "https://github.com/huangfulab/Dosage-analysis"
 license: MIT
