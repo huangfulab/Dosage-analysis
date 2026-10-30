@@ -2,7 +2,9 @@ name: R compatibility and minimum dependencies
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       r_series:
@@ -19,8 +21,6 @@ on:
           - "4.4"
           - "4.5"
           - "4.6"
-  schedule:
-    - cron: '24 5 * * 1'
 
 permissions:
   contents: read
